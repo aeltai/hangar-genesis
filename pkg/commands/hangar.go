@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -22,6 +23,9 @@ func Execute(args []string) error {
 
 	_, err := hangarCmd.cmd.ExecuteC()
 	if err != nil {
+		if errors.Is(err, ErrAborted) {
+			return err
+		}
 		if signalContext.Err() != nil {
 			return signalContext.Err()
 		}
@@ -82,6 +86,7 @@ func (cc *hangarCmd) addCommands() {
 		newMergeManifestCmd(),
 		newConvertListCmd(),
 		newGenerateListCmd(),
+		newGenesisCmd(),
 		newGenerateSigstoreKeyCmd(),
 		newSignCmd(),
 		newSignV1Cmd(),

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/cnrancher/hangar/pkg/signal"
@@ -15,6 +16,9 @@ var (
 	signalContext context.Context = signal.SetupSignalContext()
 
 	defaultUserAgent string = utils.DefaultUserAgent()
+
+	// ErrAborted is returned when the user aborts (e.g. Ctrl+C or q in TUI). Main exits with 130.
+	ErrAborted = errors.New("aborted by user")
 )
 
 type baseCmd struct {

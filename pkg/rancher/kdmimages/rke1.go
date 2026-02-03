@@ -17,6 +17,7 @@ type rkeGetter struct {
 	linuxSvcOptions   map[string]types.KubernetesServicesOptions
 	windowsSvcOptions map[string]types.KubernetesServicesOptions
 	rancherVersions   map[string]types.K8sVersionInfo
+	includeVersions   map[string]bool // when non-empty, only include these k8s versions
 
 	linuxInfo   *versionInfo
 	windowsInfo *versionInfo
@@ -32,13 +33,19 @@ func newRKEGetter(o *GetterOptions) (*rkeGetter, error) {
 	if _, err := utils.EnsureSemverValid(o.RancherVersion); err != nil {
 		return nil, err
 	}
-
+	includeVersions := make(map[string]bool)
+	for _, v := range o.IncludeVersions {
+		if v != "" {
+			includeVersions[v] = true
+		}
+	}
 	return &rkeGetter{
 		rancherVersion:    o.RancherVersion,
 		rkeSysImages:      o.KDMData.K8sVersionRKESystemImages,
 		linuxSvcOptions:   o.KDMData.K8sVersionServiceOptions,
 		windowsSvcOptions: o.KDMData.K8sVersionWindowsServiceOptions,
 		rancherVersions:   o.KDMData.K8sVersionInfo,
+		includeVersions:   includeVersions,
 	}, nil
 }
 
@@ -63,6 +70,22 @@ func (g *rkeGetter) Get(ctx context.Context) error {
 	// ignoreDeprecated option is not needed here.
 	if err := g.getK8sVersionInfo(); err != nil {
 		return err
+	}
+	// When config/TUI specified exact versions, keep only those
+	if len(g.includeVersions) > 0 {
+		for v := range g.versionSet {
+			if !g.includeVersions[v] {
+				delete(g.versionSet, v)
+				if g.linuxInfo != nil {
+					delete(g.linuxInfo.RKESystemImages, v)
+					delete(g.linuxInfo.KubernetesServicesOptions, v)
+				}
+				if g.windowsInfo != nil {
+					delete(g.windowsInfo.RKESystemImages, v)
+					delete(g.windowsInfo.KubernetesServicesOptions, v)
+				}
+			}
+		}
 	}
 	if err := fetchImages(g.linuxInfo, g.linuxImageSet, "linux"); err != nil {
 		return err

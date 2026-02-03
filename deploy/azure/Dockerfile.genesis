@@ -1,0 +1,27 @@
+# Build Go binary (CGO required for containers/image -> gpgme)
+FROM golang:1.24-alpine AS go-builder
+RUN apk add --no-cache build-base gpgme-dev btrfs-progs-dev
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# Use bfd linker (Alpine has ld.bfd; gold may be missing on some arches)
+ENV CGO_LDFLAGS="-fuse-ld=bfd"
+RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o /hangar .
+
+# Build Vue frontend
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# Runtime image (include gpgme runtime so the binary can load)
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates gpgme
+WORKDIR /app
+COPY --from=go-builder /hangar /app/hangar
+COPY --from=frontend-builder /app/dist /app/frontend/dist
+EXPOSE 8080
+ENTRYPOINT ["/app/hangar", "genesis", "serve", "--port=8080", "--static=/app/frontend/dist"]

@@ -15,6 +15,9 @@ const (
 	RancherPrimeSystemChartsRepo = "https://github.com/rancher/system-charts"
 	KontainerDriverMetadataURL   = "https://releases.rancher.com/kontainer-driver-metadata"
 
+	// Rancher Prime Registry image lists (rancher-images.txt, k3s-images.txt, rke2-images-all.linux-amd64.txt)
+	PrimeImageListBaseURL = "https://prime.ribs.rancher.io"
+
 	// Rancher Prime GC
 	RancherPrimeGCChartsRepo       = "https://github.com/cnrancher/pandaria-catalog"
 	RancherPrimeGCSystemChartsRepo = "https://github.com/cnrancher/system-charts"
@@ -132,6 +135,7 @@ func addRancherPrimeKontainerDriverMetadata(
 	o.KDMURL = fmt.Sprintf("%v/%v/data.json", KontainerDriverMetadataURL, branch)
 }
 
+// addRancherPrimeManagerGCKontainerDriverMetadata sets KDM URL for Rancher Prime (Rancher Prime Registry only; releases.rancher.com).
 func addRancherPrimeManagerGCKontainerDriverMetadata(
 	v string, o *listgenerator.GeneratorOption, dev bool,
 ) {
@@ -142,11 +146,8 @@ func addRancherPrimeManagerGCKontainerDriverMetadata(
 	} else {
 		branch = fmt.Sprintf("release-%v", majorMinor)
 	}
-	baseURL := KontainerDriverMetadataURL
-	if shouldUseGCKDM(v) {
-		baseURL = KontainerDriverMetadataGCURL
-	}
-	o.KDMURL = fmt.Sprintf("%v/%v/data.json", baseURL, branch)
+	// Rancher Prime Registry only (releases.rancher.com)
+	o.KDMURL = fmt.Sprintf("%v/%v/data.json", KontainerDriverMetadataURL, branch)
 }
 
 func shouldUseGCKDM(version string) bool {
@@ -157,4 +158,25 @@ func shouldUseGCKDM(version string) bool {
 		return false
 	}
 	return true
+}
+
+// GetKDMURLForDisplay returns the KDM data.json URL used for the given source type (for TUI Details).
+// Community and Rancher Prime both use releases.rancher.com (Rancher Prime Registry).
+func GetKDMURLForDisplay(version string, isRPMGC bool, dev bool) string {
+	majorMinor := semver.MajorMinor(version)
+	var branch string
+	if dev {
+		branch = fmt.Sprintf("dev-%v", majorMinor)
+	} else {
+		branch = fmt.Sprintf("release-%v", majorMinor)
+	}
+	return fmt.Sprintf("%v/%v/data.json", KontainerDriverMetadataURL, branch)
+}
+
+// GetImageListSourceForDisplay returns a short description of where K3s/RKE2/rancher image lists are fetched (for TUI Details).
+func GetImageListSourceForDisplay(isRPMGC bool) string {
+	if isRPMGC {
+		return PrimeImageListBaseURL + " (rancher-images.txt, k3s-images.txt, rke2-images-all.linux-amd64.txt)"
+	}
+	return "GitHub (k3s-io/k3s, rancher/rke2)"
 }

@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hangar-genesis
+  labels:
+    app.kubernetes.io/name: hangar-genesis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hangar-genesis
+  namespace: hangar-genesis
+  labels:
+    app: hangar-genesis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hangar-genesis
+  template:
+    metadata:
+      labels:
+        app: hangar-genesis
+    spec:
+      containers:
+        - name: genesis
+          image: hangar-genesis:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /api/rancher-versions
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/rancher-versions
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hangar-genesis
+  namespace: hangar-genesis
+  labels:
+    app: hangar-genesis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app: hangar-genesis
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hangar-genesis
+  namespace: hangar-genesis
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  rules:
+    # Set GENESIS_INGRESS_HOST env when applying to override (e.g. genesis.63.176.138.74.sslip.io)
+    - host: genesis.63.176.138.74.sslip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hangar-genesis
+                port:
+                  number: 80
+  # Optional: uncomment and set tls secret if you use cert-manager or have a TLS cert
+  # tls:
+  #   - hosts:
+  #       - genesis.63.176.138.74.sslip.io
+  #     secretName: genesis-tls

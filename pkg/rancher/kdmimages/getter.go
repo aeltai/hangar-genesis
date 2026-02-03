@@ -47,6 +47,15 @@ type GetterOptions struct {
 	// only outputs the highest k8s patch version
 	RemoveDeprecated bool
 	InsecureSkipTLS  bool
+
+	// IncludeVersions, when non-empty, limits which k8s versions are fetched (e.g. from config or TUI).
+	// Only these versions will be included in the image and version sets.
+	IncludeVersions []string
+
+	// ImageListBaseURL, when non-empty (e.g. "https://prime.ribs.rancher.io"), use this base for
+	// K3s/RKE2 image list URLs instead of GitHub. K3s: {base}/k3s/{version}/k3s-images.txt,
+	// RKE2: {base}/rke2/{version}/rke2-images-all.linux-amd64.txt
+	ImageListBaseURL string
 }
 
 func NewGetter(o *GetterOptions) (Getter, error) {

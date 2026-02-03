@@ -1,0 +1,74 @@
+# Example YAML configuration file for hangar genesis
+# Usage: hangar genesis --rancher=v2.13.1 --config=generate-list-config.example.yaml
+#
+# Config mode is non-interactive: no TUI, no prompts (except overwrite if output files exist).
+# Ideal for CI/scripts. Same options as TUI; see README for TUI exit (q / Ctrl+C exits immediately).
+
+# Step 1: Select distros (k3s, rke2, rke)
+distros:
+#  - k3s
+  - rke2
+  # - rke  # Uncomment to include RKE1
+
+# Step 1: Source type (community = GitHub + releases.rancher.com; prime-gc = pandaria-catalog, charts.rancher.cn)
+# sourceType: community   # default
+# sourceType: prime-gc
+
+# Step 1: Include charts and container images from Application Collection (live-fetch from api.apps.rancher.io)?
+# API auth: set env RANCHER_APPS_API_USER and RANCHER_APPS_API_PASSWORD.
+# OCI chart pull: helm registry login dp.apps.rancher.io -u <user> -p <pass>
+# Note: KDM is not provided by this registry; it is only from releases.rancher.com or Prime GC.
+# includeAppCollectionCharts: false   # set true to live-fetch charts + images from Application Collection
+
+# Step 1: Select CNI (cni_canal, cni_calico, cni_flannel, cni_cilium)
+# Note: flannel is only available for k3s
+cni: cni_calico
+
+# Step 1: Include load balancer / ingress images in Basic
+# true  = include (default): K3s Klipper + Traefik, RKE2 NGINX Ingress + Traefik
+# false = exclude: no Klipper, NGINX, or Traefik images in the generated list
+loadBalancer: true
+
+# Step 1: Include Windows node images (RKE2/K3s)
+# true  = Linux + Windows images; false = Linux only (default)
+# includeWindows: false
+# Step 1: Select Kubernetes versions for each distro
+# Use "all" to include all versions, or specify specific versions
+versions:
+  rke2:
+    - v1.34.3+rke2r1
+  # rke:
+  #   - v1.28.15
+
+# Step 2: Select groups (basic, addons, app_collection) or specific subgroups
+# Groups:
+#   - basic: Includes Rancher components + selected distro + CNI + Fleet
+#   - addons: Includes all addon charts
+#   - app_collection: Application Collection (charts + images from dp.apps.rancher.io; only when includeAppCollectionCharts: true)
+# Subgroups (for addons):
+#   - addon_monitoring: Monitoring charts (rancher-monitoring, etc.)
+#   - addon_logging: Logging charts (rancher-logging, etc.)
+#   - addon_storage: Storage charts
+#   - addon_security: Security charts
+#   - addon_backup-restore: Backup & Restore charts
+groups:
+  - basic
+  - addon_monitoring
+  - addon_logging
+  # - addons           # Uncomment to include all addon charts
+  # - addon_storage
+  # - addon_security
+  # - addon_backup-restore
+  # - app_collection   # Uncomment when includeAppCollectionCharts is true
+
+# Step 2: Select specific charts (optional, overrides groups)
+# charts:
+#   - rancher-monitoring
+#   - rancher-logging
+
+# Optional: Vulnerability scanning configuration
+scan:
+  enabled: true
+  jobs: 1
+  timeout: 10m
+  report: ""  # Auto-generated if empty

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"runtime"
 
@@ -13,6 +14,9 @@ func main() {
 	setup()
 	if err := commands.Execute(os.Args[1:]); err != nil {
 		cleanup()
+		if errors.Is(err, commands.ErrAborted) {
+			os.Exit(130)
+		}
 		logrus.Fatal(err)
 	}
 	cleanup()

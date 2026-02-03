@@ -37,6 +37,9 @@ saved-image-cache
 .vscode/*
 !launch.json.template
 
+# Azure deploy secrets
+deploy/azure/.env
+
 # Dapper
 .dapper
 Dockerfile.dapper*

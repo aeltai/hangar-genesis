@@ -34,6 +34,8 @@ type k3sRKE2Getter struct {
 	data               map[string]any
 	insecureSkipVerify bool
 	removeDeprecated   bool
+	includeVersions    map[string]bool // when non-empty, only fetch these k8s versions
+	imageListBaseURL   string         // when set, use this base for image list URLs (e.g. Prime)
 
 	linuxImageSet   map[string]map[string]bool
 	windowsImageSet map[string]map[string]bool
@@ -57,12 +59,20 @@ func newK3sRKE2Getter(o *GetterOptions) (*k3sRKE2Getter, error) {
 		return nil, err
 	}
 
+	includeVersions := make(map[string]bool)
+	for _, v := range o.IncludeVersions {
+		if v != "" {
+			includeVersions[v] = true
+		}
+	}
 	return &k3sRKE2Getter{
 		source:             o.Type,
 		rancherVersion:     o.RancherVersion,
 		data:               data,
 		insecureSkipVerify: o.InsecureSkipTLS,
 		removeDeprecated:   o.RemoveDeprecated,
+		includeVersions:    includeVersions,
+		imageListBaseURL:   strings.TrimSuffix(o.ImageListBaseURL, "/"),
 
 		linuxImageSet:   make(map[string]map[string]bool),
 		windowsImageSet: make(map[string]map[string]bool),
@@ -70,15 +80,13 @@ func newK3sRKE2Getter(o *GetterOptions) (*k3sRKE2Getter, error) {
 	}, nil
 }
 
-func (g *k3sRKE2Getter) Get(ctx context.Context) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-
-	logrus.Infof("Fetching [%v] images.", g.source)
+// compatibleVersions returns the list of Kubernetes versions compatible with
+// the getter's Rancher version from KDM data, without performing network I/O.
+// Used by the inspector for version selection in the TUI.
+func (g *k3sRKE2Getter) compatibleVersions() ([]string, error) {
 	releases, ok := g.data["releases"].([]any)
 	if !ok {
-		return fmt.Errorf("UpgradeGetter: failed to get 'releases' from data")
+		return nil, fmt.Errorf("UpgradeGetter: failed to get 'releases' from data")
 	}
 	var compatibleVersions = []string{}
 	for _, release := range releases {
@@ -93,8 +101,6 @@ func (g *k3sRKE2Getter) Get(ctx context.Context) error {
 		}
 
 		if g.rancherVersion == "dev" {
-			logrus.Debugf("[%s] adding compatible release: %s",
-				g.source, kubeVersion)
 			compatibleVersions = append(compatibleVersions, kubeVersion)
 			continue
 		}
@@ -107,30 +113,47 @@ func (g *k3sRKE2Getter) Get(ctx context.Context) error {
 			continue
 		}
 		if semver.Compare(g.rancherVersion, minVersion) < 0 {
-			// Rancher version not equal to or less than \
-			// minimum supported rancher version.
 			continue
 		}
 		if semver.Compare(g.rancherVersion, maxVersion) > 0 {
-			// Rancher version not equal to or greater than \
-			// maximum supported rancher version.
 			continue
 		}
-
-		logrus.Debugf("[%s] adding compatible release: %s",
-			g.source, kubeVersion)
 		compatibleVersions = append(compatibleVersions, kubeVersion)
 	}
+	if g.removeDeprecated {
+		compatibleVersions = filterDeprecatedVersions(compatibleVersions)
+	}
+	return compatibleVersions, nil
+}
 
+func (g *k3sRKE2Getter) Get(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	logrus.Infof("Fetching [%v] images.", g.source)
+	compatibleVersions, err := g.compatibleVersions()
+	if err != nil {
+		return err
+	}
 	if len(compatibleVersions) == 0 {
 		logrus.Infof("skipping image generation since no compatible releases "+
 			"were found for version: %s", g.rancherVersion)
 		return nil
 	}
-
-	if g.removeDeprecated {
-		compatibleVersions = filterDeprecatedVersions(compatibleVersions)
-		logrus.Debugf("Removed deprecated k8s versions: %v", compatibleVersions)
+	// When config/TUI specified exact versions, only fetch those
+	if len(g.includeVersions) > 0 {
+		filtered := compatibleVersions[:0]
+		for _, v := range compatibleVersions {
+			if g.includeVersions[v] {
+				filtered = append(filtered, v)
+			}
+		}
+		compatibleVersions = filtered
+		if len(compatibleVersions) == 0 {
+			logrus.Infof("skipping [%v]: no requested versions match KDM compatible list", g.source)
+			return nil
+		}
 	}
 
 	rs := fmt.Sprintf("[%s-release(rancher)]", g.source)
@@ -189,27 +212,40 @@ func (g *k3sRKE2Getter) Get(ctx context.Context) error {
 
 func (g *k3sRKE2Getter) getLinuxExternalList(ctx context.Context, release string) ([]string, error) {
 	var link string
-	switch g.source {
-	case RKE2:
-		link = fmt.Sprintf(RKE2ImageLinux, release)
-	case K3S:
-		link = fmt.Sprintf(K3SImageURL, release)
-	default:
-		return nil, fmt.Errorf("invalid image source: %v", g.source)
+	if g.imageListBaseURL != "" {
+		// Rancher Prime: prime.ribs.rancher.io/k3s/{version}/k3s-images.txt or .../rke2/{version}/rke2-images-all.linux-amd64.txt
+		encodedRelease := strings.ReplaceAll(release, "+", "%2B")
+		switch g.source {
+		case RKE2:
+			link = fmt.Sprintf("%s/rke2/%s/rke2-images-all.linux-amd64.txt", g.imageListBaseURL, encodedRelease)
+		case K3S:
+			link = fmt.Sprintf("%s/k3s/%s/k3s-images.txt", g.imageListBaseURL, encodedRelease)
+		default:
+			return nil, fmt.Errorf("invalid image source: %v", g.source)
+		}
+	} else {
+		switch g.source {
+		case RKE2:
+			link = fmt.Sprintf(RKE2ImageLinux, release)
+		case K3S:
+			link = fmt.Sprintf(K3SImageURL, release)
+		default:
+			return nil, fmt.Errorf("invalid image source: %v", g.source)
+		}
 	}
 	return getImageListFromURL(ctx, g.insecureSkipVerify, link)
 }
 
 func (g *k3sRKE2Getter) getWindowsExternalList(ctx context.Context, release string) ([]string, error) {
+	if g.source == K3S {
+		return []string{}, nil // K3s does not support Windows
+	}
 	var link string
-	switch g.source {
-	case RKE2:
+	if g.imageListBaseURL != "" {
+		encodedRelease := strings.ReplaceAll(release, "+", "%2B")
+		link = fmt.Sprintf("%s/rke2/%s/rke2-images.windows-amd64.txt", g.imageListBaseURL, encodedRelease)
+	} else {
 		link = fmt.Sprintf(RKE2ImageWindows, release)
-	case K3S:
-		// K3s does not support Windows.
-		return []string{}, nil
-	default:
-		return nil, fmt.Errorf("invalid image source: %v", g.source)
 	}
 	return getImageListFromURL(ctx, g.insecureSkipVerify, link)
 }

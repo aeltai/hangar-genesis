@@ -28,6 +28,22 @@ Hangar is a command line utility for container images with the following feature
 - Hangar supports copying/saving/loading/signing/scanning images in parallel to increase speed.
 - Hangar is designed to export container images as archive files and import them into image repositories in Air-Gapped environments.
 
+## Genesis (interactive generate-list)
+
+The `genesis` command (alias `generate-list-genesis`) generates image lists and Kubernetes version lists for Rancher air-gapped deployments. You can use an interactive TUI, a config file, or both:
+
+```bash
+# Interactive TUI: select distros (K3s/RKE2/RKE1), CNI, load balancer, and versions
+hangar genesis --rancher=v2.13.1 --tui
+
+# Config-driven (e.g. after saving selections from TUI); no prompts, ideal for CI/scripts
+hangar genesis --rancher=v2.13.1 --config=config.yaml
+```
+
+In TUI mode, press **q** or **Ctrl+C** at any step to exit immediately (all steps are cancelled).
+
+See `hangar genesis --help` for options and `generate-list-config.example.yaml` for a sample config.
+
 ## Getting started
 
 For documentation, visit the [Hangar Documentation](https://hangar.cnrancher.com/docs/v1.9).
