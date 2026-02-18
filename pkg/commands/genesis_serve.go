@@ -303,7 +303,11 @@ func handleStep1Options(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(rancherVersion, "v") {
 		rancherVersion = "v" + rancherVersion
 	}
-	cc := &genesisCmd{genesisOpts: &genesisOpts{rancherVersion: rancherVersion}}
+	cc := &genesisCmd{genesisOpts: &genesisOpts{
+		rancherVersion:      rancherVersion,
+		dev:                 isPreRelease(rancherVersion),
+		kdmRemoveDeprecated: true,
+	}}
 	if err := cc.setupFlags(); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -364,6 +368,7 @@ func handleGenerate(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(cc.genesisOpts.rancherVersion, "v") {
 		cc.genesisOpts.rancherVersion = "v" + cc.genesisOpts.rancherVersion
 	}
+	cc.genesisOpts.dev = isPreRelease(cc.genesisOpts.rancherVersion)
 	cc.isRPMGC = req.IsRPMGC
 	cc.includeAppCollectionCharts = req.IncludeAppCollectionCharts
 	cc.appCollectionAPIUser = req.AppCollectionAPIUser

@@ -759,11 +759,7 @@ func (cc *genesisCmd) loadKDMData(ctx context.Context) ([]byte, error) {
 		return io.ReadAll(resp.Body)
 	}
 	option := &listgenerator.GeneratorOption{}
-	if cc.isRPMGC {
-		addRancherPrimeKontainerDriverMetadata(cc.rancherVersion, option, cc.dev)
-	} else {
-		addRancherPrimeKontainerDriverMetadata(cc.rancherVersion, option, cc.dev)
-	}
+	addRancherPrimeKontainerDriverMetadata(cc.rancherVersion, option, cc.dev)
 	if option.KDMURL == "" {
 		return nil, fmt.Errorf("could not resolve KDM URL for interactive mode")
 	}
@@ -774,7 +770,17 @@ func (cc *genesisCmd) loadKDMData(ctx context.Context) ([]byte, error) {
 			Proxy:           http.ProxyFromEnvironment,
 		},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, option.KDMURL, nil)
+	data, err := fetchKDMWithFallback(ctx, client, cc.rancherVersion, option.KDMURL, cc.dev)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// fetchKDMWithFallback fetches KDM data from primaryURL. If the response is
+// 404 and dev was not already requested, it retries with the dev- branch URL.
+func fetchKDMWithFallback(ctx context.Context, client *http.Client, version, primaryURL string, devAlreadySet bool) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, primaryURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -783,6 +789,28 @@ func (cc *genesisCmd) loadKDMData(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound && !devAlreadySet && !shouldUseDev(version, false) {
+		resp.Body.Close()
+		majorMinor := semver.MajorMinor(version)
+		devURL := fmt.Sprintf("%v/dev-%v/data.json", KontainerDriverMetadataURL, majorMinor)
+		logrus.Infof("KDM release branch not found (404), falling back to dev branch: %s", devURL)
+		req2, err := http.NewRequestWithContext(ctx, http.MethodGet, devURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp2, err := utils.HTTPClientDoWithRetry(ctx, client, req2)
+		if err != nil {
+			return nil, err
+		}
+		defer resp2.Body.Close()
+		if resp2.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("KDM data not available at %s (HTTP %d) or %s (HTTP %d)", primaryURL, http.StatusNotFound, devURL, resp2.StatusCode)
+		}
+		return io.ReadAll(resp2.Body)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch KDM data from %s: HTTP %d", primaryURL, resp.StatusCode)
+	}
 	return io.ReadAll(resp.Body)
 }
 
@@ -1578,7 +1606,7 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 
 		// Build Addon Charts subgroups
 		var addonSubgroups []treeNode
-		categoryOrder := []string{"monitoring", "logging", "backup-restore", "storage", "security", "cis", "provisioning", "cluster-api", "os-management", "other"}
+		categoryOrder := []string{"monitoring", "logging", "backup-restore", "storage", "security", "cis", "provisioning", "networking", "cluster-api", "os-management", "support", "other"}
 		categoryNames := map[string]string{
 			"monitoring":     "Monitoring",
 			"logging":        "Logging",
@@ -1586,9 +1614,11 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 			"storage":        "Storage",
 			"security":       "Security",
 			"cis":            "CIS Benchmark",
-			"provisioning":   "Provisioning (EKS/GKE/AKS)",
+			"provisioning":   "Provisioning (EKS/GKE/AKS/vSphere)",
+			"networking":     "Networking (Istio/SR-IOV)",
 			"cluster-api":    "Cluster API",
 			"os-management":  "OS Management",
+			"support":        "Support & Diagnostics",
 			"other":          "Other",
 		}
 		for _, cat := range categoryOrder {
@@ -1657,13 +1687,13 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 		var appCollChildren []treeNode
 		if totalCharts > 0 {
 			appCollChildren = append(appCollChildren, treeNode{
-				Id: "app_collection_charts", Label: "Charts (" + strconv.Itoa(totalCharts) + ")",
+				Id: "app_collection_charts", Label: "Helm Charts (" + strconv.Itoa(totalCharts) + " OCI refs)",
 				Kind: "component", Count: totalCharts, Children: appCollChartNodes,
 			})
 		}
 		if len(containerOnlyImgs) > 0 {
 			appCollChildren = append(appCollChildren, treeNode{
-				Id: listgenerator.SourceGroupAppCollectionContainers, Label: "Containers (" + strconv.Itoa(len(containerOnlyImgs)) + ")",
+				Id: listgenerator.SourceGroupAppCollectionContainers, Label: "Container Images (" + strconv.Itoa(len(containerOnlyImgs)) + ")",
 				Kind: "component", Count: len(containerOnlyImgs), Children: refsToTreeNodes(containerOnlyImgs),
 			})
 		}

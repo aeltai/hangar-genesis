@@ -613,6 +613,10 @@ var chartCategoryByName = map[string]string{
 	"rancher-turtles":           "cluster-api",
 	"system-upgrade-controller": "core",
 	"remotedialer-proxy":        "core",
+	"rancher-csp-adapter":       "core",
+	"ui-plugin-operator":        "core",
+	"ui-plugin-operator-crd":    "core",
+	"rancher-k3s-upgrader":      "core",
 
 	// Fleet & GitOps (core: part of Basic/Rancher stack)
 	"fleet":            "core",
@@ -620,10 +624,14 @@ var chartCategoryByName = map[string]string{
 	"fleet-agent":      "core",
 	"fleet-controller": "core",
 
-	// Monitoring & Observability (AppCo stack, Prometheus)
-	"rancher-monitoring":     "monitoring",
-	"rancher-monitoring-crd": "monitoring",
-	"prometheus-federator":   "monitoring",
+	// Monitoring & Observability
+	"rancher-monitoring":         "monitoring",
+	"rancher-monitoring-crd":     "monitoring",
+	"rancher-project-monitoring": "monitoring",
+	"prometheus-federator":       "monitoring",
+	"rancher-alerting-drivers":   "monitoring",
+	"rancher-pushprox":           "monitoring",
+	"suse-observability-agent":   "monitoring",
 
 	// Logging
 	"rancher-logging":     "logging",
@@ -635,26 +643,42 @@ var chartCategoryByName = map[string]string{
 
 	// Storage (Longhorn, Harvester, CSI)
 	"longhorn":                 "storage",
+	"longhorn-crd":             "storage",
 	"harvester-cloud-provider": "storage",
+	"harvester-csi-driver":     "storage",
+	"rancher-vsphere-csi":      "storage",
 
-	// Security & Compliance
-	"rancher-cis-benchmark": "cis",
-	"rancher-compliance":    "cis",
-	"neuvector-controller":  "security",
-	"neuvector-enforcer":    "security",
-	"neuvector-manager":     "security",
-	"scc-operator":          "security",
-	"compliance-operator":   "cis",
+	// Security (NeuVector, Gatekeeper/OPA)
+	"neuvector":              "security",
+	"neuvector-crd":          "security",
+	"neuvector-monitor":      "security",
+	"neuvector-controller":   "security",
+	"neuvector-enforcer":     "security",
+	"neuvector-manager":      "security",
+	"rancher-gatekeeper":     "security",
+	"rancher-gatekeeper-crd": "security",
+	"scc-operator":           "security",
 
-	// Cloud Provider Operators (Provisioning)
-	"aks-operator":         "provisioning",
-	"eks-operator":         "provisioning",
-	"gke-operator":         "provisioning",
-	"ali-operator":         "provisioning",
-	"rancher-aks-operator": "provisioning",
-	"rancher-eks-operator": "provisioning",
-	"rancher-gke-operator": "provisioning",
-	"rancher-ali-operator": "provisioning",
+	// CIS Benchmark & Compliance
+	"rancher-cis-benchmark":     "cis",
+	"rancher-cis-benchmark-crd": "cis",
+	"rancher-compliance":        "cis",
+	"rancher-compliance-crd":    "cis",
+	"compliance-operator":       "cis",
+
+	// Provisioning (cloud provider operators, vSphere)
+	"aks-operator":             "provisioning",
+	"eks-operator":             "provisioning",
+	"gke-operator":             "provisioning",
+	"ali-operator":             "provisioning",
+	"rancher-aks-operator":     "provisioning",
+	"rancher-aks-operator-crd": "provisioning",
+	"rancher-eks-operator":     "provisioning",
+	"rancher-eks-operator-crd": "provisioning",
+	"rancher-gke-operator":     "provisioning",
+	"rancher-gke-operator-crd": "provisioning",
+	"rancher-ali-operator":     "provisioning",
+	"rancher-vsphere-cpi":      "provisioning",
 
 	// Cluster API (CAPI) components
 	"rancher-cluster-api":            "cluster-api",
@@ -665,8 +689,19 @@ var chartCategoryByName = map[string]string{
 	"cluster-api-gcp-controller":     "cluster-api",
 	"cluster-api-vsphere-controller": "cluster-api",
 
+	// Networking (Istio, SR-IOV)
+	"rancher-istio": "networking",
+	"sriov":         "networking",
+	"sriov-crd":     "networking",
+
 	// OS Management
+	"elemental":          "os-management",
+	"elemental-crd":      "os-management",
 	"elemental-operator": "os-management",
+
+	// Support & Diagnostics
+	"rancher-supportability-review":     "support",
+	"rancher-supportability-review-crd": "support",
 }
 
 // GroupImagesByChart groups images by the Rancher chart they originate from,

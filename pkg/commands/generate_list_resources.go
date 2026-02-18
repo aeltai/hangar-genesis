@@ -2,12 +2,33 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cnrancher/hangar/pkg/rancher/chartimages"
 	"github.com/cnrancher/hangar/pkg/rancher/listgenerator"
 	"github.com/cnrancher/hangar/pkg/utils"
 	"golang.org/x/mod/semver"
 )
+
+// isPreRelease returns true when version has an alpha, beta, or rc pre-release
+// tag (e.g. v2.14.0-alpha3). These versions typically only have a dev- KDM
+// branch, not a release- branch.
+func isPreRelease(version string) bool {
+	pre := semver.Prerelease(version)
+	if pre == "" {
+		return false
+	}
+	pre = strings.ToLower(pre)
+	return strings.Contains(pre, "alpha") ||
+		strings.Contains(pre, "beta") ||
+		strings.Contains(pre, "rc")
+}
+
+// shouldUseDev returns true when the dev branch should be used: either the
+// caller explicitly requested dev, or the version is a pre-release.
+func shouldUseDev(version string, dev bool) bool {
+	return dev || isPreRelease(version)
+}
 
 const (
 	// Global Rancher Prime
@@ -27,7 +48,7 @@ const (
 func addRancherPrimeCharts(v string, o *listgenerator.GeneratorOption, dev bool) {
 	majorMinor := semver.MajorMinor(v)
 	var branch string
-	if dev {
+	if shouldUseDev(v, dev) {
 		branch = fmt.Sprintf("dev-%v", majorMinor)
 	} else {
 		branch = fmt.Sprintf("release-%v", majorMinor)
@@ -46,12 +67,11 @@ func addRancherPrimeSystemCharts(
 	v string, o *listgenerator.GeneratorOption, dev bool,
 ) {
 	if semver.Compare(v, "v2.11.0-0") >= 0 {
-		// SystemChart was removed on v2.11
 		return
 	}
 	majorMinor := semver.MajorMinor(v)
 	var branch string
-	if dev {
+	if shouldUseDev(v, dev) {
 		branch = fmt.Sprintf("dev-%v", majorMinor)
 	} else {
 		branch = fmt.Sprintf("release-%v", majorMinor)
@@ -71,7 +91,7 @@ func addRancherPrimeGCCharts(
 ) {
 	majorMinor := semver.MajorMinor(v)
 	var branch string
-	if dev {
+	if shouldUseDev(v, dev) {
 		branch = fmt.Sprintf("dev/%v", majorMinor)
 	} else {
 		branch = fmt.Sprintf("release/%v", majorMinor)
@@ -92,21 +112,20 @@ func addRancherPrimeGCSystemCharts(v string, o *listgenerator.GeneratorOption, d
 	var branch string
 
 	if semver.Compare(v, "v2.11.0-0") >= 0 {
-		// SystemChart was removed on v2.11
 		return
 	}
 
-	// GC starts use global system-charts from v2.9
+	useDev := shouldUseDev(v, dev)
 	if semver.Compare(v, "v2.9.0") >= 0 {
 		url = RancherPrimeSystemChartsRepo
-		if dev {
+		if useDev {
 			branch = fmt.Sprintf("dev-%v", majorMinor)
 		} else {
 			branch = fmt.Sprintf("release-%v", majorMinor)
 		}
 	} else {
 		url = RancherPrimeGCSystemChartsRepo
-		if dev {
+		if useDev {
 			branch = fmt.Sprintf("dev-%v", majorMinor)
 		} else {
 			branch = fmt.Sprintf("release-%v-ent", majorMinor)
@@ -127,7 +146,7 @@ func addRancherPrimeKontainerDriverMetadata(
 ) {
 	majorMinor := semver.MajorMinor(v)
 	var branch string
-	if dev {
+	if shouldUseDev(v, dev) {
 		branch = fmt.Sprintf("dev-%v", majorMinor)
 	} else {
 		branch = fmt.Sprintf("release-%v", majorMinor)
@@ -135,18 +154,16 @@ func addRancherPrimeKontainerDriverMetadata(
 	o.KDMURL = fmt.Sprintf("%v/%v/data.json", KontainerDriverMetadataURL, branch)
 }
 
-// addRancherPrimeManagerGCKontainerDriverMetadata sets KDM URL for Rancher Prime (Rancher Prime Registry only; releases.rancher.com).
 func addRancherPrimeManagerGCKontainerDriverMetadata(
 	v string, o *listgenerator.GeneratorOption, dev bool,
 ) {
 	majorMinor := semver.MajorMinor(v)
 	var branch string
-	if dev {
+	if shouldUseDev(v, dev) {
 		branch = fmt.Sprintf("dev-%v", majorMinor)
 	} else {
 		branch = fmt.Sprintf("release-%v", majorMinor)
 	}
-	// Rancher Prime Registry only (releases.rancher.com)
 	o.KDMURL = fmt.Sprintf("%v/%v/data.json", KontainerDriverMetadataURL, branch)
 }
 
@@ -161,11 +178,10 @@ func shouldUseGCKDM(version string) bool {
 }
 
 // GetKDMURLForDisplay returns the KDM data.json URL used for the given source type (for TUI Details).
-// Community and Rancher Prime both use releases.rancher.com (Rancher Prime Registry).
 func GetKDMURLForDisplay(version string, isRPMGC bool, dev bool) string {
 	majorMinor := semver.MajorMinor(version)
 	var branch string
-	if dev {
+	if shouldUseDev(version, dev) {
 		branch = fmt.Sprintf("dev-%v", majorMinor)
 	} else {
 		branch = fmt.Sprintf("release-%v", majorMinor)
