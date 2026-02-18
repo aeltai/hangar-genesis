@@ -1,0 +1,28 @@
+# Reduce Docker build context for Genesis image (deploy/azure/Dockerfile.genesis)
+.git
+.gitignore
+*.md
+LICENSE
+CODE_OF_CONDUCT.md
+test/
+scripts/
+.github
+.goreleaser.yaml
+.golangci.yml
+Makefile
+*report*
+saved-image-cache
+dist/
+bin/
+/hangar
+.vscode
+*.key
+*.pub
+deploy/azure/.env
+policy.json
+generate-list-config.example.yaml
+CURRENT_CHART_MAPPING.md
+docs/
+# Frontend: node_modules is reinstalled in container via npm ci
+frontend/node_modules
+frontend/.vscode

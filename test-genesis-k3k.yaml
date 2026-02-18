@@ -1,0 +1,17 @@
+# Minimal config to test K3K chart fetch via CLI
+distros:
+  - k3s
+cni: ""
+loadBalancer: true
+includeWindows: false
+versions:
+  k3s:
+    - v1.34.3+k3s1
+groups:
+  - basic
+charts:
+  - rancher-rancher
+selectedProducts:
+  - k3k
+sourceType: community
+includeAppCollectionCharts: false

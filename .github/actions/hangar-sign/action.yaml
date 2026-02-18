@@ -1,0 +1,133 @@
+name: "Hangar Sign Actions"
+description: "hangar sign images in workflow"
+inputs:
+  version:
+    description: "Hangar version"
+    default: "v1.9.3"
+    required: true
+  images:
+    description: "Image list"
+    default: ""
+    required: true
+  cosign_key:
+    description: "sign image with cosign private key (Optional: Sign image in keyless mode if not provided)"
+  cosign_key_password:
+    description: "cosign private key password"
+  debug:
+    description: "enable debug output"
+    default: "false"
+  jobs:
+    description: "sign worker num"
+    default: "1"
+  arch:
+    description: "sign image arch"
+    default: "amd64,arm64"
+  os:
+    description: "sign image os"
+    default: "linux"
+
+runs:
+  using: "composite"
+  steps:
+  - name: Install Hangar
+    shell: bash
+    run: |
+      set -ex
+      curl -fsL https://github.com/cnrancher/hangar/releases/download/${{ inputs.version }}/hangar_Linux_$(uname -m).tar.gz | tar zx
+      sudo mv hangar_Linux_$(uname -m)/hangar /usr/local/bin/hangar
+      sudo rm -rf hangar_*
+
+      mkdir -p /home/runner/.config/containers/
+
+      cat > /home/runner/.config/containers/policy.json << EOF
+      {
+          "default": [
+              {
+                  "type": "insecureAcceptAnything"
+              }
+          ],
+          "transports":
+              {
+                  "docker-daemon":
+                      {
+                          "": [{"type":"insecureAcceptAnything"}]
+                      }
+              }
+      }
+      EOF
+
+      hangar version
+  - name: Hangar sign images
+    shell: bash
+    run: |
+      set -e
+      TMP_DIR=$(mktemp -d)
+      WORK_DIR=$(pwd)
+      cd $TMP_DIR
+      cat > images.txt << EOT
+      ${{ inputs.images }}
+      EOT
+      echo Images:
+      cat images.txt
+
+      HANGAR_SIGN_OPTIONS="--oidc-provider=github-actions "
+      if [[ "${{ inputs.cosign_key }}" != "" ]]; then
+        echo "::add-mask::${{ inputs.cosign_key }}"
+        echo "::add-mask::${{ inputs.cosign_key_password }}"
+        echo -n "${{ inputs.cosign_key_password }}" > password.txt
+        cat > sigstore.key << EOT
+      ${{ inputs.cosign_key }}
+      EOT
+
+          HANGAR_SIGN_OPTIONS="--key=sigstore.key --passphrase-file=password.txt "
+      fi
+
+      set -x
+
+      hangar sign -f images.txt \
+        -j=${{ inputs.jobs }} \
+        --arch=${{ inputs.arch }} \
+        --os=${{ inputs.os }} \
+        --debug=${{ inputs.debug }} \
+        ${HANGAR_SIGN_OPTIONS} \
+        --failed=sign-failed.txt \
+        --auto-yes || true
+
+      set +x
+
+      if [[ -e 'sign-failed.txt' ]]; then
+          echo "Some image failed to sign:" >&2
+          cat sign-failed.txt
+          echo
+          echo "Retrying..."
+
+          set -x
+
+          hangar sign -f images.txt \
+            -j=${{ inputs.jobs }} \
+            --arch=${{ inputs.arch }} \
+            --os=${{ inputs.os }} \
+            --debug=${{ inputs.debug }} \
+            ${HANGAR_SIGN_OPTIONS} \
+            --failed=sign-failed-1.txt \
+            --auto-yes || true
+
+          set +x
+
+          if [[ -e 'sign-failed-1.txt' ]]; then
+              echo "There are still some image(s) failed to sign:" >&2
+              cat sign-failed-1.txt >&2
+              FAILED=true
+          fi
+      fi
+
+      cd $WORK_DIR
+      rm -rf $TMP_DIR
+
+      if [[ ${FAILED:-} = 'true' ]]; then
+          echo
+          echo FAILED >&2
+          exit 1
+      fi
+
+      echo Done

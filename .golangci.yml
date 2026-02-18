@@ -1,0 +1,128 @@
+version: "2"
+run:
+  go: "1.24"
+  tests: false
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - goconst
+    - gosec
+    - govet
+    - importas
+    - ineffassign
+    - misspell
+    - nakedret
+    - prealloc
+    - revive
+    - unconvert
+    - whitespace
+  settings:
+    gosec:
+      excludes:
+        - G115 # https://github.com/moby/moby/issues/48358#issuecomment-2323339603
+    importas:
+      alias:
+        # Kubernetes
+        - pkg: k8s.io/api/core/v1
+          alias: corev1
+        - pkg: k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
+          alias: apiextensionsv1
+        - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
+          alias: metav1
+        - pkg: k8s.io/apimachinery/pkg/util/runtime
+          alias: utilruntime
+        - pkg: sigs.k8s.io/controller-runtime/pkg/client
+          alias: runtimeclient
+      no-unaliased: true
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: indent-error-flow
+        - name: errorf
+        - name: empty-block
+        - name: superfluous-else
+        - name: unused-parameter
+        - name: unreachable-code
+        - name: redefines-builtin-id
+        - name: unexported-return
+    misspell:
+      locale: US
+      ignore-rules: []
+      extra-words: []
+      mode: default
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - revive
+        path: pkg/image/scan/report.go
+        text: don't use ALL_CAPS in Go names
+      # Permit insecure skip tls verify
+      - linters:
+          - gosec
+        path: pkg/*
+        text: TLS InsecureSkipVerify may be true
+      # Permit insecure skip tls verify
+      - linters:
+          - gosec
+        path: pkg/*
+        text: TLS InsecureSkipVerify set true
+      # Permit pubkey permission to 0644
+      - linters:
+          - gosec
+        path: pkg/commands/generate_sigstore_key.go
+        text: Expect WriteFile permissions to be 0600 or less
+      # Permit image blobs to 0644
+      - linters:
+          - gosec
+        path: pkg/hangar/archive/oci/common.go
+        text: Expect WriteFile permissions to be 0600 or less
+      # Permit cobra cmd as unused parameter
+      - linters:
+          - revive
+        path: pkg/commands/*
+        text: 'unused-parameter: parameter ''cmd'' seems to be unused'
+      - linters:
+          - revive
+        path: pkg/commands/*
+        text: 'unused-parameter: parameter ''args'' seems to be unused'
+      - linters:
+          - revive
+        path: pkg/*
+        text: 'avoid meaningless'
+    paths:
+      - zz_generated_*
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - zz_generated_*
+      - third_party$
+      - builtin$
+      - examples$

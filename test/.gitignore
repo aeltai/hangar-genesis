@@ -1,0 +1,23 @@
+# pytest cache
+.pytest_cache
+__pycache__
+.tox
+
+# charts
+pandaria-catalog
+rancher-charts
+system-charts
+
+# temporary files
+*.zip
+*.txt
+!requirements.txt
+*.json
+*.csv
+
+# binary files
+.dapper*
+/bin
+
+# registry files
+/registry

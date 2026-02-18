@@ -1,0 +1,39 @@
+name: "Install Hangar"
+description: "Install hangar in workflow"
+inputs:
+  version:
+    description: "Hangar version"
+    default: "v1.9.3"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+  - name: Install Hangar
+    shell: bash
+    run: |
+      set -ex
+      curl -fsL https://github.com/cnrancher/hangar/releases/download/${{ inputs.version }}/hangar_Linux_$(uname -m).tar.gz | tar zx
+      sudo mv hangar_Linux_$(uname -m)/hangar /usr/local/bin/hangar
+      sudo rm -rf hangar_*
+
+      mkdir -p /home/runner/.config/containers/
+
+      cat > /home/runner/.config/containers/policy.json << EOF
+      {
+          "default": [
+              {
+                  "type": "insecureAcceptAnything"
+              }
+          ],
+          "transports":
+              {
+                  "docker-daemon":
+                      {
+                          "": [{"type":"insecureAcceptAnything"}]
+                      }
+              }
+      }
+      EOF
+
+      hangar version

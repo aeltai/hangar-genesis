@@ -1,0 +1,9 @@
+# Image list in DEFAULT format
+// COMMENT LINE
+
+TEST INVALID IMAGE LIST LINE
+
+alpine:3
+hxstarrys/cas:6.5.6
+library/mysql:5.7.5
+library/nginx:latest

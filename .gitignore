@@ -1,0 +1,49 @@
+# binary files
+/hangar
+/bin/
+/dist/
+
+*.txt
+*.out
+*.converted
+*.tar.gz
+*.tgz
+*.zstd
+*.part*
+*.tar
+*.zip
+*.key
+*.pub
+*.csv
+*.spdx
+*.spdx.json
+*report.json
+*report.yaml
+*report.txt
+*report.csv
+scan-report.*
+sign-validate*
+tmp*
+data.json
+charts-repo-cache
+/rancher/
+/cnrancher/
+/vendor/
+
+# default save image directory
+saved-image-cache
+
+# vscode config
+.vscode/*
+!launch.json.template
+
+# Azure deploy secrets
+deploy/azure/.env
+
+# Dapper
+.dapper
+Dockerfile.dapper*
+Dockerfile.test.dapper*
+!Dockerfile.dapper
+!Dockerfile.test.dapper
+/main
