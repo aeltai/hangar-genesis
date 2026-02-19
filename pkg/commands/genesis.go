@@ -21,6 +21,7 @@ import (
 	"github.com/cnrancher/hangar/pkg/rancher/kdmimages"
 	"github.com/cnrancher/hangar/pkg/rancher/listgenerator"
 	"github.com/cnrancher/hangar/pkg/utils"
+	"github.com/containers/image/v5/signature"
 	"github.com/containers/image/v5/types"
 	"github.com/rancher/rke/types/kdm"
 	"github.com/sirupsen/logrus"
@@ -84,7 +85,8 @@ type genesisOpts struct {
 	outputWindows  string
 	outputSource   string
 	outputVersions string
-	rancherVersion string
+	rancherVersion    string   // single version or display string like "v2.13.1 + v2.14.0-alpha2"
+	rancherVersionsList []string // when set (multi-version from API), one rancher/rancher image per entry
 	minKubeVersion string
 	dev            bool
 	tlsVerify      bool
@@ -759,11 +761,7 @@ func (cc *genesisCmd) loadKDMData(ctx context.Context) ([]byte, error) {
 		return io.ReadAll(resp.Body)
 	}
 	option := &listgenerator.GeneratorOption{}
-	if cc.isRPMGC {
-		addRancherPrimeKontainerDriverMetadata(cc.rancherVersion, option, cc.dev)
-	} else {
-		addRancherPrimeKontainerDriverMetadata(cc.rancherVersion, option, cc.dev)
-	}
+	addRancherPrimeKontainerDriverMetadata(cc.rancherVersion, option, cc.dev)
 	if option.KDMURL == "" {
 		return nil, fmt.Errorf("could not resolve KDM URL for interactive mode")
 	}
@@ -774,7 +772,17 @@ func (cc *genesisCmd) loadKDMData(ctx context.Context) ([]byte, error) {
 			Proxy:           http.ProxyFromEnvironment,
 		},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, option.KDMURL, nil)
+	data, err := fetchKDMWithFallback(ctx, client, cc.rancherVersion, option.KDMURL, cc.dev)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// fetchKDMWithFallback fetches KDM data from primaryURL. If the response is
+// 404 and dev was not already requested, it retries with the dev- branch URL.
+func fetchKDMWithFallback(ctx context.Context, client *http.Client, version, primaryURL string, devAlreadySet bool) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, primaryURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -783,6 +791,28 @@ func (cc *genesisCmd) loadKDMData(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound && !devAlreadySet && !shouldUseDev(version, false) {
+		resp.Body.Close()
+		majorMinor := semver.MajorMinor(version)
+		devURL := fmt.Sprintf("%v/dev-%v/data.json", KontainerDriverMetadataURL, majorMinor)
+		logrus.Infof("KDM release branch not found (404), falling back to dev branch: %s", devURL)
+		req2, err := http.NewRequestWithContext(ctx, http.MethodGet, devURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp2, err := utils.HTTPClientDoWithRetry(ctx, client, req2)
+		if err != nil {
+			return nil, err
+		}
+		defer resp2.Body.Close()
+		if resp2.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("KDM data not available at %s (HTTP %d) or %s (HTTP %d)", primaryURL, http.StatusNotFound, devURL, resp2.StatusCode)
+		}
+		return io.ReadAll(resp2.Body)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch KDM data from %s: HTTP %d", primaryURL, resp.StatusCode)
+	}
 	return io.ReadAll(resp.Body)
 }
 
@@ -1154,6 +1184,175 @@ func (cc *genesisCmd) runInteractiveText() error {
 	return nil
 }
 
+// inferChartFromImage maps an image ref to the RKE2/K3s/Rancher Helm chart
+// that deploys it. These charts are bundled inside the distro binary and
+// visible as separate image lists on the RKE2/K3s GitHub release pages
+// (e.g. rke2-images-calico.txt, rke2-images-core.txt, etc.).
+func inferChartFromImage(img, componentLabel string) string {
+	l := strings.ToLower(img)
+	name := ""
+	if idx := strings.LastIndex(l, "/"); idx >= 0 {
+		name = l[idx+1:]
+	} else {
+		name = l
+	}
+	if i := strings.LastIndex(name, ":"); i >= 0 {
+		name = name[:i]
+	}
+
+	switch componentLabel {
+	case "RKE2":
+		switch {
+		case strings.Contains(name, "coredns"):
+			return "rke2-coredns"
+		case strings.Contains(name, "metrics-server"):
+			return "rke2-metrics-server"
+		case strings.Contains(name, "snapshot-controller") || strings.Contains(name, "csi-snapshotter"):
+			return "rke2-snapshot-controller"
+		case strings.Contains(name, "cluster-autoscaler"):
+			return "rke2-cluster-autoscaler"
+		case strings.Contains(name, "addon-resizer"):
+			return "rke2-metrics-server"
+		case strings.Contains(name, "dns-node-cache"):
+			return "rke2-dns-node-cache"
+		case strings.Contains(name, "etcd"):
+			return "rke2-etcd"
+		case strings.Contains(name, "multus") || strings.Contains(name, "whereabouts"):
+			return "rke2-multus"
+		case strings.Contains(name, "cloud-provider") && strings.Contains(name, "vsphere"):
+			return "rke2-vsphere-cpi"
+		case strings.Contains(name, "vsphere") || strings.Contains(name, "csi-release"):
+			return "rke2-vsphere-csi"
+		case strings.Contains(name, "rke2-cloud-provider"):
+			return "rke2-cloud-provider"
+		case strings.Contains(name, "harvester-cloud"):
+			return "harvester-cloud-provider"
+		case strings.Contains(name, "harvester-csi"):
+			return "harvester-csi-driver"
+		case strings.Contains(name, "longhornio") || strings.Contains(name, "longhorn"):
+			return "longhorn-csi"
+		case strings.Contains(name, "klipper-helm"):
+			return "rke2-helm-controller"
+		case strings.Contains(name, "klipper-lb"):
+			return "klipper-lb"
+		case strings.Contains(name, "kube-proxy"):
+			return "rke2-kube-proxy"
+		case strings.Contains(name, "kube-vip"):
+			return "rke2-kube-vip"
+		case strings.Contains(name, "sig-storage"):
+			return "rke2-snapshot-controller"
+		case strings.Contains(name, "pause"):
+			return "rke2-runtime"
+		case strings.Contains(name, "kubernetes") || strings.Contains(name, "rke2-runtime"):
+			return "rke2-runtime"
+		default:
+			return "rke2-core"
+		}
+	case "K3s":
+		switch {
+		case strings.Contains(name, "coredns"):
+			return "k3s-coredns"
+		case strings.Contains(name, "metrics-server"):
+			return "k3s-metrics-server"
+		case strings.Contains(name, "local-path"):
+			return "k3s-local-path-provisioner"
+		case strings.Contains(name, "traefik"):
+			return "k3s-traefik"
+		case strings.Contains(name, "klipper-lb"):
+			return "k3s-klipper-lb"
+		case strings.Contains(name, "klipper-helm"):
+			return "k3s-helm-controller"
+		default:
+			return "k3s-runtime"
+		}
+	case "CNI":
+		switch {
+		case strings.Contains(name, "calico"):
+			return "rke2-calico"
+		case strings.Contains(name, "canal"):
+			return "rke2-canal"
+		case strings.Contains(name, "flannel"):
+			return "rke2-canal"
+		case strings.Contains(name, "cilium"):
+			return "rke2-cilium"
+		case strings.Contains(name, "multus") || strings.Contains(name, "whereabouts"):
+			return "rke2-multus"
+		case strings.Contains(name, "cni-plugins"):
+			return "cni-plugins"
+		default:
+			return "cni-plugins"
+		}
+	case "Load Balancer / Ingress":
+		switch {
+		case strings.Contains(name, "nginx") || strings.Contains(name, "ingress-nginx"):
+			return "rke2-ingress-nginx"
+		case strings.Contains(name, "traefik"):
+			return "traefik"
+		case strings.Contains(name, "klipper"):
+			return "klipper-lb"
+		default:
+			return "rke2-ingress-nginx"
+		}
+	case "Rancher":
+		switch {
+		case strings.Contains(name, "fleet"):
+			return "fleet"
+		case strings.Contains(name, "webhook"):
+			return "rancher-webhook"
+		case strings.Contains(name, "shell"):
+			return "rancher-shell"
+		case strings.Contains(name, "system-upgrade"):
+			return "system-upgrade-controller"
+		case strings.Contains(name, "machine"):
+			return "rancher-machine"
+		case strings.Contains(name, "rancher-agent") || name == "rancher":
+			return "rancher"
+		default:
+			return "rancher"
+		}
+	}
+	return "other"
+}
+
+// inferChartVersion extracts the most representative version from a chart's image tags.
+func inferChartVersion(imgs []string) string {
+	versions := make(map[string]int)
+	for _, img := range imgs {
+		tag := ""
+		if i := strings.LastIndex(img, ":"); i >= 0 {
+			tag = img[i+1:]
+		}
+		if tag == "" {
+			continue
+		}
+		// Strip build suffixes like "-build20260119", "-hardened1"
+		ver := tag
+		if i := strings.Index(ver, "-build"); i > 0 {
+			ver = ver[:i]
+		}
+		if i := strings.Index(ver, "-hardened"); i > 0 {
+			ver = ver[:i]
+		}
+		// Only keep semver-like versions
+		if len(ver) > 0 && (ver[0] == 'v' || (ver[0] >= '0' && ver[0] <= '9')) {
+			versions[ver]++
+		}
+	}
+	if len(versions) == 0 {
+		return ""
+	}
+	// Return the most common version, or the highest if tied
+	best := ""
+	bestCount := 0
+	for v, c := range versions {
+		if c > bestCount || (c == bestCount && v > best) {
+			best = v
+			bestCount = c
+		}
+	}
+	return best
+}
+
 // buildGenesisTree builds the tree for Step 3 (TUI or API). Returns roots, basicCharts, fleetCharts, cniCharts, basicImageComponent, pastSelection.
 func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNode, fleetCharts []treeNode, cniCharts []treeNode, basicImageComponent map[string]string, pastSelection string) {
 	sourceGroups := listgenerator.GroupImagesBySource(
@@ -1377,13 +1576,21 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 	}
 
 	// Add well-known core Rancher images that may not appear in KDM/chart sources
-	// (e.g. rancher/rancher - main Rancher server, typically not in downstream cluster lists)
-	rancherTag := cc.rancherVersion
-	if rancherTag == "" {
-		rancherTag = "latest"
-	}
-	wellKnownCoreImages := []string{
-		"rancher/rancher:" + rancherTag,
+	// (e.g. rancher/rancher - main Rancher server); one image per Rancher version when multiple are selected
+	var wellKnownCoreImages []string
+	if len(cc.rancherVersionsList) > 0 {
+		for _, tag := range cc.rancherVersionsList {
+			if tag == "" {
+				tag = "latest"
+			}
+			wellKnownCoreImages = append(wellKnownCoreImages, "rancher/rancher:"+tag)
+		}
+	} else {
+		rancherTag := cc.rancherVersion
+		if rancherTag == "" {
+			rancherTag = "latest"
+		}
+		wellKnownCoreImages = []string{"rancher/rancher:" + rancherTag}
 	}
 	for _, img := range wellKnownCoreImages {
 		if !basicImgSet[img] {
@@ -1431,7 +1638,7 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 		if strings.Contains(imgLower, "klipper-helm") || strings.Contains(imgLower, "klipper-lb") ||
 			strings.Contains(imgLower, "nginx-ingress") || strings.Contains(imgLower, "ingress-nginx") ||
 			strings.Contains(imgLower, "traefik") {
-			basicImageComponent[img] = "LB"
+			basicImageComponent[img] = "Load Balancer / Ingress"
 			continue
 		}
 		if strings.Contains(imgLower, "rancher/rancher:") {
@@ -1453,47 +1660,112 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 			}
 		}
 		if basicImageComponent[img] == "" {
-			basicImageComponent[img] = "Distro"
+			compParts := strings.Split(cc.components, ",")
+			if len(compParts) == 1 {
+				switch strings.TrimSpace(compParts[0]) {
+				case "k3s":
+					basicImageComponent[img] = "K3s"
+				case "rke2":
+					basicImageComponent[img] = "RKE2"
+				case "rke":
+					basicImageComponent[img] = "RKE1"
+				default:
+					basicImageComponent[img] = "RKE2"
+				}
+			} else {
+				basicImageComponent[img] = "RKE2"
+			}
 		}
 	}
 
-	// Basic group: subgroups by component. Fleet is merged into Rancher (no separate Fleet group). Single LB group.
-	subgroupOrder := []string{"Rancher", "CNI", "K3s", "RKE2", "RKE1", "Distro", "LB"}
-	bySubgroup := make(map[string][]string)
+	// Build Essentials tree: group images by their chart (inferred from image name).
+	// RKE2/K3s bundle Helm charts internally; we map images to chart names.
+	var basicChildren []treeNode
+
+	// Map each image to a chart name within its component group
+	type chartBucket struct {
+		chart  string
+		images []string
+	}
+	buildChartSubgroups := func(label string, imgs []string) treeNode {
+		byChart := make(map[string][]string)
+		for _, img := range imgs {
+			ch := inferChartFromImage(img, label)
+			byChart[ch] = append(byChart[ch], img)
+		}
+		var chartNames []string
+		for ch := range byChart {
+			chartNames = append(chartNames, ch)
+		}
+		sort.Strings(chartNames)
+		var chartChildren []treeNode
+		for _, ch := range chartNames {
+			cImgs := byChart[ch]
+			sort.Strings(cImgs)
+			ver := inferChartVersion(cImgs)
+			chartLabel := ch
+			if ver != "" {
+				chartLabel = ch + " " + ver
+			}
+			chartChildren = append(chartChildren, treeNode{
+				Id: "basic_chart_" + ch, Label: chartLabel,
+				Kind: "chart", Count: len(cImgs),
+				Children: refsToTreeNodes(cImgs),
+			})
+		}
+		id := "basic_" + strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(label, " ", "_"), "/", ""))
+		return treeNode{
+			Id: id, Label: label + " (" + strconv.Itoa(len(imgs)) + " images, " + strconv.Itoa(len(chartChildren)) + " charts)",
+			Kind: "component", Count: len(imgs),
+			Children: chartChildren,
+		}
+	}
+
+	// Assign images to component groups (Rancher, CNI, RKE2/K3s, LB)
+	type compGroup struct {
+		label  string
+		images []string
+	}
+	groupOrder := []string{"Rancher", "CNI", "K3s", "RKE2", "RKE1", "Load Balancer / Ingress"}
+	byGroup := make(map[string][]string)
 	for _, img := range basicImgs {
 		label := basicImageComponent[img]
-		if label == "" {
-			label = "Distro"
+		if label == "" || label == "Distro" {
+			compParts := strings.Split(cc.components, ",")
+			if len(compParts) == 1 {
+				switch strings.TrimSpace(compParts[0]) {
+				case "k3s":
+					label = "K3s"
+				case "rke2":
+					label = "RKE2"
+				case "rke":
+					label = "RKE1"
+				default:
+					label = "RKE2"
+				}
+			} else {
+				label = "RKE2"
+			}
 		}
 		if label == "Fleet" {
 			label = "Rancher"
 		}
-		bySubgroup[label] = append(bySubgroup[label], img)
+		if label == "Load Balancer / Ingress" || label == "LB" {
+			label = "Load Balancer / Ingress"
+		}
+		byGroup[label] = append(byGroup[label], img)
 	}
-	var basicChildren []treeNode
-	for _, label := range subgroupOrder {
-		imgs := bySubgroup[label]
+	for _, label := range groupOrder {
+		imgs := byGroup[label]
 		if len(imgs) == 0 {
 			continue
 		}
-		sort.Strings(imgs)
-		id := "basic_" + strings.ToLower(strings.ReplaceAll(label, "-", "_"))
-		basicChildren = append(basicChildren, treeNode{
-			Id: id, Label: label + " (" + strconv.Itoa(len(imgs)) + ")",
-			Kind: "component", Count: len(imgs),
-			Children: refsToTreeNodes(imgs),
-		})
+		basicChildren = append(basicChildren, buildChartSubgroups(label, imgs))
 	}
-	roots = append(roots, treeNode{
-		Id: "basic", Label: "Essentials",
-		Kind: "component", Count: len(basicImgs),
-		Children: basicChildren,
-	})
-
 	// Charts group: separate into Basic Charts and Addon Charts (with subgroups)
 	if g := merged[listgenerator.SourceGroupCharts]; g != nil && g.Count() > 0 {
 		// Basic charts: fleet, system charts, core infrastructure
-		var basicCharts []treeNode
+		var basicChartNodes []treeNode
 		// Addon charts grouped by category
 		addonChartsByCategory := make(map[string][]treeNode)
 
@@ -1514,20 +1786,25 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 			if cg.Category != "" {
 				cat = " [" + cg.Category + "]"
 			}
+			ver := inferChartVersion(imgs)
+			verLabel := ""
+			if ver != "" {
+				verLabel = " " + ver
+			}
 			chartNode := treeNode{
-				Id: name, Label: name + cat,
+				Id: name, Label: name + verLabel + cat,
 				Kind: "chart", Count: cg.Count(), Children: refsToTreeNodes(imgs),
 			}
 
-			// Categorize: Basic charts = core Rancher system charts (not addons)
-			isBasic := name == "rancher" || name == "rancher-rancher" ||
-				strings.Contains(name, "fleet") || cg.Category == "fleet" ||
-				strings.Contains(name, "system-upgrade") || strings.Contains(name, "elemental") ||
-				strings.Contains(name, "rancher-webhook") || strings.Contains(name, "remotedialer-proxy") ||
-				strings.Contains(name, "rancher-turtles") || strings.Contains(name, "rancher-provisioning-capi") ||
-				cg.Category == "core"
+			// Categorize: Basic charts = ONLY auto-deployed Rancher system charts
+			isBasic := name == "fleet" || name == "fleet-crd" || name == "fleet-agent" || name == "fleet-controller" ||
+				name == "rancher-webhook" ||
+				name == "rancher-provisioning-capi" ||
+				name == "system-upgrade-controller" ||
+				name == "remotedialer-proxy" ||
+				name == "ui-plugin-operator" || name == "ui-plugin-operator-crd"
 			if isBasic {
-				basicCharts = append(basicCharts, chartNode)
+				basicChartNodes = append(basicChartNodes, chartNode)
 			} else {
 				// Addon chart: group by category
 				category := cg.Category
@@ -1572,13 +1849,23 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 						category = "other"
 					}
 				}
+				// Map unknown categories to "other"
+				knownCats := map[string]bool{
+					"monitoring": true, "logging": true, "backup-restore": true,
+					"storage": true, "security": true, "cis": true,
+					"provisioning": true, "networking": true, "cluster-api": true,
+					"os-management": true, "support": true, "other": true,
+				}
+				if !knownCats[category] {
+					category = "other"
+				}
 				addonChartsByCategory[category] = append(addonChartsByCategory[category], chartNode)
 			}
 		}
 
 		// Build Addon Charts subgroups
 		var addonSubgroups []treeNode
-		categoryOrder := []string{"monitoring", "logging", "backup-restore", "storage", "security", "cis", "provisioning", "cluster-api", "os-management", "other"}
+		categoryOrder := []string{"monitoring", "logging", "backup-restore", "storage", "security", "cis", "provisioning", "networking", "cluster-api", "os-management", "support", "other"}
 		categoryNames := map[string]string{
 			"monitoring":     "Monitoring",
 			"logging":        "Logging",
@@ -1586,9 +1873,11 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 			"storage":        "Storage",
 			"security":       "Security",
 			"cis":            "CIS Benchmark",
-			"provisioning":   "Provisioning (EKS/GKE/AKS)",
+			"provisioning":   "Provisioning (EKS/GKE/AKS/vSphere)",
+			"networking":     "Networking (Istio/SR-IOV)",
 			"cluster-api":    "Cluster API",
 			"os-management":  "OS Management",
+			"support":        "Support & Diagnostics",
 			"other":          "Other",
 		}
 		for _, cat := range categoryOrder {
@@ -1604,6 +1893,53 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 			}
 		}
 
+		// Merge Rancher system charts into the Rancher component group (avoid duplicates).
+		// System charts from the repo (fleet, rancher-webhook, etc.) are matched to
+		// inferred charts from KDM images. Matching charts get their images merged;
+		// unmatched repo charts are added as new chart nodes under Rancher.
+		if len(basicChartNodes) > 0 {
+			for i, comp := range basicChildren {
+				if comp.Id != "basic_rancher" {
+					continue
+				}
+				inferredByName := make(map[string]int)
+				for j, ch := range comp.Children {
+					inferredByName[strings.TrimPrefix(ch.Id, "basic_chart_")] = j
+				}
+				for _, repoChart := range basicChartNodes {
+					repoName := repoChart.Id
+					if idx, ok := inferredByName[repoName]; ok {
+						// Merge: add repo chart images that aren't already in the inferred chart
+						existing := make(map[string]bool)
+						for _, child := range comp.Children[idx].Children {
+							existing[child.Id] = true
+						}
+						for _, child := range repoChart.Children {
+							if !existing[child.Id] {
+								comp.Children[idx].Children = append(comp.Children[idx].Children, child)
+								comp.Children[idx].Count++
+							}
+						}
+						comp.Children[idx].Label = repoName + " [auto-deployed]"
+					} else {
+						repoChart.Label = repoChart.Label + " [auto-deployed]"
+						repoChart.Id = "basic_chart_" + repoName
+						comp.Children = append(comp.Children, repoChart)
+					}
+				}
+				// Recount
+				total := 0
+				for _, ch := range comp.Children {
+					total += ch.Count
+				}
+				comp.Count = total
+				comp.Label = "Rancher (" + strconv.Itoa(total) + " images, " + strconv.Itoa(len(comp.Children)) + " charts)"
+				basicChildren[i] = comp
+				break
+			}
+		}
+		basicCharts = basicChartNodes
+
 		// Group 2: AddOns (only addon charts with subgroups, no basic charts)
 		if len(addonSubgroups) > 0 {
 			totalAddonImgs := 0
@@ -1616,6 +1952,13 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 			})
 		}
 	}
+
+	// Group 1: Essentials (appended after charts so System Charts subgroup is included)
+	roots = append([]treeNode{{
+		Id: "basic", Label: "Essentials",
+		Kind: "component", Count: len(basicImgs),
+		Children: basicChildren,
+	}}, roots...)
 
 	// Group 3: Application Collection — Charts (from API refs) + Containers subgroup
 	// Charts come from cc.appCollectionChartRefs (oci://dp.apps.rancher.io/charts/<slug>); generator does not extract OCI chart images, so we list chart names only.
@@ -1657,13 +2000,13 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 		var appCollChildren []treeNode
 		if totalCharts > 0 {
 			appCollChildren = append(appCollChildren, treeNode{
-				Id: "app_collection_charts", Label: "Charts (" + strconv.Itoa(totalCharts) + ")",
+				Id: "app_collection_charts", Label: "Helm Charts (" + strconv.Itoa(totalCharts) + " OCI refs)",
 				Kind: "component", Count: totalCharts, Children: appCollChartNodes,
 			})
 		}
 		if len(containerOnlyImgs) > 0 {
 			appCollChildren = append(appCollChildren, treeNode{
-				Id: listgenerator.SourceGroupAppCollectionContainers, Label: "Containers (" + strconv.Itoa(len(containerOnlyImgs)) + ")",
+				Id: listgenerator.SourceGroupAppCollectionContainers, Label: "Container Images (" + strconv.Itoa(len(containerOnlyImgs)) + ")",
 				Kind: "component", Count: len(containerOnlyImgs), Children: refsToTreeNodes(containerOnlyImgs),
 			})
 		}
@@ -1762,12 +2105,21 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 			}
 		}
 		if len(imgs) == 0 {
-			// Well-known rancher/rancher image
-			rt := cc.rancherVersion
-			if rt == "" {
-				rt = "latest"
+			// Well-known rancher/rancher image(s) — one per Rancher version when multiple selected
+			if len(cc.rancherVersionsList) > 0 {
+				for _, rt := range cc.rancherVersionsList {
+					if rt == "" {
+						rt = "latest"
+					}
+					imgs = append(imgs, "rancher/rancher:"+rt)
+				}
+			} else {
+				rt := cc.rancherVersion
+				if rt == "" {
+					rt = "latest"
+				}
+				imgs = append(imgs, "rancher/rancher:"+rt)
 			}
-			imgs = append(imgs, "rancher/rancher:"+rt)
 		}
 		sort.Strings(imgs)
 		label := name + " [core]"
@@ -1814,31 +2166,30 @@ func (cc *genesisCmd) buildGenesisTree() (roots []treeNode, basicCharts []treeNo
 		RKE2Nginx:   cc.interactiveLBRKE2Nginx,
 		RKE2Traefik: cc.interactiveLBRKE2Traefik,
 	})
-	// Add selected Kubernetes versions (K3s, RKE2, RKE1)
+	// Add selected Kubernetes versions (only for distros that were actually selected)
+	compParts := strings.Split(cc.components, ",")
+	compSet := make(map[string]bool)
+	for _, c := range compParts {
+		compSet[strings.TrimSpace(c)] = true
+	}
 	var versParts []string
-	if strings.Contains(cc.components, "k3s") && cc.k3sVersions != "" {
+	if compSet["k3s"] && cc.k3sVersions != "" {
 		v := cc.k3sVersions
-		if v == "all" {
-			v = "all"
-		} else if len(v) > 20 {
+		if len(v) > 20 {
 			v = v[:17] + "..."
 		}
 		versParts = append(versParts, "K3s: "+v)
 	}
-	if strings.Contains(cc.components, "rke2") && cc.rke2Versions != "" {
+	if compSet["rke2"] && cc.rke2Versions != "" {
 		v := cc.rke2Versions
-		if v == "all" {
-			v = "all"
-		} else if len(v) > 20 {
+		if len(v) > 20 {
 			v = v[:17] + "..."
 		}
 		versParts = append(versParts, "RKE2: "+v)
 	}
-	if strings.Contains(cc.components, "rke") && cc.rkeVersions != "" {
+	if compSet["rke"] && cc.rkeVersions != "" {
 		v := cc.rkeVersions
-		if v == "all" {
-			v = "all"
-		} else if len(v) > 20 {
+		if len(v) > 20 {
 			v = v[:17] + "..."
 		}
 		versParts = append(versParts, "RKE1: "+v)
@@ -2623,6 +2974,74 @@ func (cc *genesisCmd) saveSlice(ctx context.Context, name string, data []string)
 		return err
 	}
 	return nil
+}
+
+// RunScanWithOptions runs Trivy vulnerability scan on the given image list using
+// insecure policy and optional TLS skip. Used by the Genesis serve API when no
+// genesisCmd is available (e.g. POST /api/scan).
+func RunScanWithOptions(ctx context.Context, images []string, opts RunScanOptions) (*scan.Report, error) {
+	if opts.Jobs < 1 || opts.Jobs > utils.MaxWorkerNum {
+		opts.Jobs = 1
+	}
+	if opts.Timeout <= 0 {
+		opts.Timeout = 10 * time.Minute
+	}
+	// debug=true so "Start to scan image" etc. appear in server logs for the UI
+	scan.InitTrivyLogOutput(true, false)
+	if err := scan.InitTrivyDatabase(ctx, scan.DBOptions{
+		CacheDirectory:        utils.TrivyCacheDir(),
+		InsecureSkipTLSVerify: opts.InsecureSkipTLS,
+	}); err != nil {
+		return nil, fmt.Errorf("init trivy database: %w", err)
+	}
+	if err := scan.InitScanner(ctx, scan.ScannerOption{
+		Format:                "csv",
+		Scanners:              []string{"vuln"},
+		CacheDirectory:        utils.TrivyCacheDir(),
+		InsecureSkipTLSVerify: opts.InsecureSkipTLS,
+	}); err != nil {
+		return nil, fmt.Errorf("init scanner: %w", err)
+	}
+	sysCtx := &types.SystemContext{
+		DockerRegistryUserAgent:    utils.DefaultUserAgent(),
+		DockerInsecureSkipTLSVerify: types.NewOptionalBool(opts.InsecureSkipTLS),
+		OCIInsecureSkipTLSVerify:    opts.InsecureSkipTLS,
+	}
+	policy := &signature.Policy{
+		Default: []signature.PolicyRequirement{
+			signature.NewPRInsecureAcceptAnything(),
+		},
+		Transports: make(map[string]signature.PolicyTransportScopes),
+	}
+	report := scan.NewReport()
+	s, err := hangar.NewScanner(&hangar.ScannerOpts{
+		CommonOpts: hangar.CommonOpts{
+			Images:              images,
+			Arch:                []string{"amd64", "arm64"},
+			OS:                  []string{"linux"},
+			Timeout:             opts.Timeout,
+			Workers:             opts.Jobs,
+			FailedImageListName: "",
+			SystemContext:       sysCtx,
+			Policy:              policy,
+		},
+		Report:   report,
+		Registry: "",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("new scanner: %w", err)
+	}
+	if err := s.Run(ctx); err != nil {
+		return report, err
+	}
+	return report, nil
+}
+
+// RunScanOptions holds options for RunScanWithOptions (Genesis serve API).
+type RunScanOptions struct {
+	InsecureSkipTLS bool
+	Jobs            int
+	Timeout         time.Duration
 }
 
 // runScanForGenerateList runs the vulnerability scanner on the given image list

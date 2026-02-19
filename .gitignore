@@ -1,4 +1,5 @@
 # binary files
+/main
 /hangar
 /bin/
 /dist/
@@ -46,4 +47,3 @@ Dockerfile.dapper*
 Dockerfile.test.dapper*
 !Dockerfile.dapper
 !Dockerfile.test.dapper
-/main

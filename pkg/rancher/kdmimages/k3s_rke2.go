@@ -136,29 +136,50 @@ func (g *k3sRKE2Getter) Get(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if len(compatibleVersions) == 0 {
-		logrus.Infof("skipping image generation since no compatible releases "+
-			"were found for version: %s", g.rancherVersion)
-		return nil
-	}
-	// When config/TUI specified exact versions, only fetch those
+	// Decide which versions to fetch: KDM-compatible and/or requested (GitHub-only) versions.
+	var versionsToFetch []string
 	if len(g.includeVersions) > 0 {
-		filtered := compatibleVersions[:0]
+		// User requested specific versions: include those in KDM plus any requested but not in KDM (GitHub-only).
+		kdmRequested := compatibleVersions[:0]
 		for _, v := range compatibleVersions {
 			if g.includeVersions[v] {
-				filtered = append(filtered, v)
+				kdmRequested = append(kdmRequested, v)
 			}
 		}
-		compatibleVersions = filtered
-		if len(compatibleVersions) == 0 {
-			logrus.Infof("skipping [%v]: no requested versions match KDM compatible list", g.source)
+		versionsToFetch = kdmRequested
+		for v := range g.includeVersions {
+			if v == "" {
+				continue
+			}
+			found := false
+			for _, c := range compatibleVersions {
+				if c == v {
+					found = true
+					break
+				}
+			}
+			if !found {
+				versionsToFetch = append(versionsToFetch, v)
+				logrus.Infof("Including [%v] version %q from GitHub release (not in KDM for this Rancher version)", g.source, v)
+			}
+		}
+		if len(versionsToFetch) == 0 {
+			logrus.Infof("skipping [%v]: no requested versions (KDM or GitHub) to fetch", g.source)
 			return nil
 		}
+	} else {
+		// "All": only KDM-compatible versions.
+		if len(compatibleVersions) == 0 {
+			logrus.Infof("skipping image generation since no compatible releases "+
+				"were found for version: %s", g.rancherVersion)
+			return nil
+		}
+		versionsToFetch = compatibleVersions
 	}
 
 	rs := fmt.Sprintf("[%s-release(rancher)]", g.source)
 	us := fmt.Sprintf("[%s-upgrade(rancher)]", g.source)
-	for _, version := range compatibleVersions {
+	for _, version := range versionsToFetch {
 		g.versionSet[version] = true
 
 		// Add upgrade images.

@@ -94,6 +94,13 @@ do_up() {
       --image "$FULL_IMAGE" --output none || true
   fi
 
+  # Pass GitHub token from local .env into the container app (avoids API rate limits)
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    echo "Setting GITHUB_TOKEN on container app..."
+    az containerapp update --name "$CONTAINERAPP_NAME" --resource-group "$RESOURCE_GROUP_NAME" \
+      --set-env-vars "GITHUB_TOKEN=$GITHUB_TOKEN" --output none
+  fi
+
   FQDN=$(az containerapp show --name "$CONTAINERAPP_NAME" --resource-group "$RESOURCE_GROUP_NAME" \
     --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null || true)
   if [[ -n "$FQDN" ]]; then
