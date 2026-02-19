@@ -2,6 +2,7 @@
 
 export interface ClusterVersionInfo {
   versions: string[]
+  sources?: Record<string, string> // version -> "kdm" | "github" | "both"
 }
 
 export interface Step1Details {
@@ -25,6 +26,7 @@ export interface TreeNode {
 
 export interface GenerateRequest {
   rancherVersion: string
+  rancherVersions?: string[]
   isRPMGC: boolean
   includeAppCollectionCharts: boolean
   appCollectionAPIUser: string
@@ -37,9 +39,11 @@ export interface GenerateRequest {
   lbRKE2Nginx: boolean
   lbRKE2Traefik: boolean
   includeWindows: boolean
-  k3sVersions: string
-  rke2Versions: string
-  rkeVersions: string
+  k3sVersions: string[]
+  rke2Versions: string[]
+  rkeVersions: string[]
+  /** Optional destination registry for mirror/save/load and Hauler; used in Next steps commands. */
+  destinationRegistry?: string
 }
 
 export interface GenerateResponse {
