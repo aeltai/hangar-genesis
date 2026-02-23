@@ -76,8 +76,8 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    # Set GENESIS_INGRESS_HOST env when applying to override (e.g. genesis.63.176.138.74.sslip.io)
-    - host: genesis.63.176.138.74.sslip.io
+    # Replace with your host (e.g. genesis.<your-ip>.sslip.io or genesis.example.com)
+    - host: genesis.example.com
       http:
         paths:
           - path: /
@@ -90,5 +90,5 @@ spec:
   # Optional: uncomment and set tls secret if you use cert-manager or have a TLS cert
   # tls:
   #   - hosts:
-  #       - genesis.63.176.138.74.sslip.io
+  #       - genesis.example.com
   #     secretName: genesis-tls

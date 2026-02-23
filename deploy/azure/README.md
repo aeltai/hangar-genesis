@@ -106,12 +106,12 @@ No Kubernetes required. The script creates a resource group, Azure Container Reg
 3. **Create ACR and attach to AKS (if you don’t have one yet):**
 
    ```bash
-   export ACR_NAME=psegenesisacr   # unique name
-   az acr create --resource-group pse-aeltai-aks-rg25 --name $ACR_NAME --sku Basic
-   az aks update --resource-group pse-aeltai-aks-rg25 --name pse-aeltai-aks25 --attach-acr $ACR_NAME
+   export ACR_NAME=<your-acr-name>   # unique name
+   az acr create --resource-group $RESOURCE_GROUP_NAME --name $ACR_NAME --sku Basic
+   az aks update --resource-group $RESOURCE_GROUP_NAME --name $AKS_CLUSTER_NAME --attach-acr $ACR_NAME
    ```
 
-   Then set `ACR_NAME=psegenesisacr` in your `.env`.
+   Then set `ACR_NAME=<your-acr-name>` in your `.env`.
 
 4. **Deploy:**
 
@@ -136,7 +136,7 @@ No Kubernetes required. The script creates a resource group, Azure Container Reg
 
 - **Pods:** `kubectl get pods -n hangar-genesis`
 - **Service:** `kubectl get svc -n hangar-genesis`
-- **Ingress:** The manifest uses host `genesis.63.176.138.74.sslip.io`. Ensure your ingress controller (e.g. NGINX) is installed and that this host or your preferred host points to the cluster. If your Rancher is at `https://rancher.63.176.138.74.sslip.io`, you can use the same IP with a different hostname for Genesis.
+- **Ingress:** The manifest uses a default host (e.g. `genesis.<your-ip>.sslip.io`). Ensure your ingress controller (e.g. NGINX) is installed and that the host points to the cluster. Set `GENESIS_INGRESS_HOST` in `.env` or edit the manifest to match your host.
 
 ## Rancher URL and token
 
@@ -188,4 +188,4 @@ To do steps 2–4 in one go, run `./container-app.sh all` (or `./app-service.sh 
 | `AZURE_CLIENT_ID` | Service principal app ID (for `az aks get-credentials` if needed) |
 | `AZURE_CLIENT_SECRET` | Service principal secret |
 | `AZURE_TENANT_ID` | Azure AD tenant ID |
-| `GENESIS_INGRESS_HOST` | Override ingress host; default in YAML is `genesis.63.176.138.74.sslip.io` |
+| `GENESIS_INGRESS_HOST` | Override ingress host (e.g. `genesis.<your-ip>.sslip.io`) |

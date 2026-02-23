@@ -19,8 +19,8 @@ fi
 
 # Defaults
 AZURE_LOCATION="${AZURE_LOCATION:-westeurope}"
-RESOURCE_GROUP_NAME="${RESOURCE_GROUP_NAME:-pse-aeltai-aks-rg25}"
-AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-pse-aeltai-aks25}"
+RESOURCE_GROUP_NAME="${RESOURCE_GROUP_NAME:-}"
+AKS_CLUSTER_NAME="${AKS_CLUSTER_NAME:-}"
 IMAGE_NAME="${IMAGE_NAME:-hangar-genesis}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 ACR_NAME="${ACR_NAME:-}"
@@ -59,7 +59,7 @@ do_apply() {
   fi
 
   echo "Deployment applied. Check: kubectl get pods -n hangar-genesis"
-  echo "If using ingress: https://genesis.63.176.138.74.sslip.io (or your GENESIS_INGRESS_HOST)"
+  echo "If using ingress: set GENESIS_INGRESS_HOST in .env or edit k8s/ingress.yaml"
 }
 
 case "${1:-all}" in

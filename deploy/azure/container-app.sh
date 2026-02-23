@@ -19,7 +19,7 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
 fi
 
 AZURE_LOCATION="${AZURE_LOCATION:-westeurope}"
-RESOURCE_GROUP_NAME="${RESOURCE_GROUP_NAME:-pse-aeltai-aks-rg25}"
+RESOURCE_GROUP_NAME="${RESOURCE_GROUP_NAME:-}"
 ACR_NAME="${ACR_NAME:-}"
 IMAGE_NAME="${IMAGE_NAME:-hangar-genesis}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
