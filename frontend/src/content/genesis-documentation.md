@@ -203,9 +203,61 @@ So addon chart versions per Rancher version = **same branch as Rancher major.min
 
 ---
 
+## CLI: TUI and YAML config
+
+You can run Genesis in two ways from the command line: **interactive TUI** (`--tui`) or **non-interactive YAML** (`--config`). Both use the same logic as the web UI and produce the same image lists and config format.
+
+### TUI (interactive)
+
+The TUI is a terminal UI that mirrors the web flow: Step 1 (distros, versions, CNI, load balancer, Windows), Step 2 (generate tree), Step 3 (select groups/charts/images in the tree, then export).
+
+```bash
+# Interactive: prompts for Step 1, then shows tree and selection (Step 2/3)
+hangar genesis --rancher=v2.13.1 --tui
+```
+
+- **Required:** `--rancher=<version>` (e.g. `v2.13.1`). Optional: `--output=images.txt`, `--registry=<dest-registry>`.
+- **Step 1:** Choose distros (k3s, rke2, rke), CNI, load balancer, Windows, then pick K3s/RKE2/RKE versions (or “all”) from the list.
+- **Step 2/3:** Generator runs; then the tree is shown. Select/deselect nodes (Basic, Addons, charts). Export writes the image list to the output file.
+- **Save your choices as YAML:** run with `--save-config=my-config.yaml`. After you finish the TUI (export), the current selections are written to `my-config.yaml`. You can then re-run non-interactively with `--config=my-config.yaml`.
+- **Exit:** `q` or Ctrl+C exits (Ctrl+C exits immediately without saving).
+
+```bash
+# TUI and save the resulting config for later CI use
+hangar genesis --rancher=v2.13.1 --tui --save-config=genesis-config.yaml
+```
+
+### YAML config (non-interactive)
+
+Run Genesis without any prompts by passing a YAML config file. Same options as the TUI and web UI; ideal for CI, scripts, and repeatable runs.
+
+```bash
+# Non-interactive: all options come from the YAML file
+hangar genesis --rancher=v2.13.1 --config=genesis-config.yaml
+```
+
+- **Required:** `--rancher=<version>` and `--config=<path>`.
+- **Optional flags:** `--output=images.txt`, `--registry=<dest-registry>`, `--rke2-images=...`, etc. Output defaults to `<rancher-version>-images.txt` if not set.
+- **Where to get the YAML:**  
+  - **Export YAML** from the web UI (Step 3), or  
+  - **TUI** with `--save-config=file.yaml` after export, or  
+  - Start from the example in the repo: **`generate-list-config.example.yaml`** (see [YAML Config Format](#yaml-config-format) for fields).
+
+The config file contains distros, CNI, loadBalancer, versions (per distro), groups (e.g. `basic`, `addon_monitoring`), optional `charts` and `destinationRegistry` / auth, and optional `scan` settings. No prompts are shown (except overwrite if the output file already exists).
+
+### Summary
+
+| Mode        | Command / source                    | Use case                          |
+| ----------- | ----------------------------------- | --------------------------------- |
+| **Web UI**  | Browser + Genesis server            | Visual flow, pipelines (API)      |
+| **TUI**     | `hangar genesis --rancher=X --tui`  | Terminal, one-off or --save-config |
+| **YAML**    | `hangar genesis --rancher=X --config=file.yaml` | CI, scripts, repeat runs  |
+
+---
+
 ## YAML Config Format
 
-Genesis can be run from the CLI with a YAML config (no UI). The same format is produced when you **Export YAML** from the app.
+Genesis can be run from the CLI with a YAML config (no UI). The same format is produced when you **Export YAML** from the app or when you use **--save-config** after a TUI run.
 
 ### Fields
 
@@ -283,6 +335,8 @@ hangar genesis --rancher=v2.13.1 --config=genesis-config.yaml \
   --output=my-images.txt \
   --rke2-images=rke2-images.txt
 ```
+
+**Example config in repo:** The repository includes **`generate-list-config.example.yaml`** at the project root with commented options (distros, CNI, versions, groups, destination registry, scan). Copy and edit it for your run or use it as reference for all supported keys (including `rancherVersions`, `includeRC`, `includeGitHubVersions`, `lbK3sKlipper`, `lbRKE2Nginx`, etc.).
 
 ---
 
