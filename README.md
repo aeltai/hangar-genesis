@@ -1,5 +1,7 @@
 # Hangar Genesis
 
+**Fork of [Hangar](https://github.com/cnrancher/hangar)** (SUSE Rancher) — this repo adds the Genesis server and web UI on top of upstream Hangar. For syncing with upstream, see [README-PROJECT.md](README-PROJECT.md).
+
 **Repo:** [github.com/aeltai/hangar-genesis](https://github.com/aeltai/hangar-genesis) · **Live demo:** [Try Genesis →](https://genesis-app.wonderfulsea-dc99daa3.westeurope.azurecontainerapps.io/)
 
 For **run locally, deploy, and upstream sync**, see [README-PROJECT.md](README-PROJECT.md).
@@ -218,6 +220,32 @@ hangar genesis --rancher=v2.13.1 --config=genesis-config.yaml
 
 Same format as **Export YAML** from the app or **--save-config** after a TUI run.
 
+### Sample configuration
+
+```yaml
+# Example: RKE2 + Calico, Basic + Monitoring/Logging, one RKE2 version
+distros:
+  - rke2
+cni: cni_calico
+loadBalancer: true
+
+versions:
+  rke2:
+    - v1.34.3+rke2r1
+
+groups:
+  - basic
+  - addon_monitoring
+  - addon_logging
+
+scan:
+  enabled: true
+  jobs: 1
+  timeout: 10m
+```
+
+Use it: `hangar genesis --rancher=v2.13.1 --config=genesis-config.yaml`. Full example with all options: **`generate-list-config.example.yaml`** in the repo root.
+
 ### Fields
 
 | Field                        | Type                  | Description                                                                            |
@@ -245,17 +273,169 @@ hangar genesis --rancher=v2.13.1 --config=genesis-config.yaml
 
 ---
 
+## Genesis web server
+
+The **Genesis server** is the HTTP service that serves the API and (optionally) the built web UI. Run it with:
+
+```bash
+hangar genesis serve [--port=8080] [--static=./frontend/dist]
+```
+
+| Flag       | Default   | Description                                                                 |
+| ---------- | --------- | --------------------------------------------------------------------------- |
+| `--port`   | `8080`    | Port to listen on.                                                          |
+| `--static` | *(empty)* | Directory to serve as the frontend (e.g. `./frontend/dist` after building). |
+
+- **With `--static`:** Serves both the API under `/api/` and the UI at `/`. Use this for a single process (e.g. production or “run locally”).
+- **Without `--static`:** API-only; use when the frontend is served separately (e.g. `npm run dev` in `frontend/` pointing at this server).
+
+Optional: set `GITHUB_TOKEN` or `GITHUB_PAT` so the server can call GitHub without hitting rate limits (Rancher/K3s/RKE2 versions, release notes).
+
+---
+
 ## API reference
 
-Base: same origin as the app. All under `/api/`. CORS allows GET/POST.
+All endpoints are under `/api/`. Base URL: same origin as the app (e.g. `http://localhost:8080`). CORS allows GET/POST. On error, JSON `{ "error": "<message>" }` with an appropriate status (400, 404, 500, etc.).
 
-**Generate and export:** `GET /api/rancher-versions` → `GET /api/step1-options?rancher=<ver>` → `POST /api/generate` → `POST /api/export` (body: jobId, selectedComponentIDs, chartNames, selectedImageRefs). Returns `images.txt`.
+### Generate and export flow
 
-**Public GET (pipelines):** After one export, `GET /api/genesis/image-list?jobId=<id>` (image list), `GET /api/genesis/config?jobId=<id>` (YAML config). Jobs expire after 60 minutes.
+| Step | Method | Endpoint                               | Description |
+| ---- | ------ | -------------------------------------- | ----------- |
+| 1    | GET    | `/api/rancher-versions`                | List available Rancher versions. |
+| 2    | GET    | `/api/step1-options?rancher=<version>` | Step 1 options (KDM capabilities, K3s/RKE2/RKE versions). |
+| 3    | POST   | `/api/generate`                        | Start a generate job. |
+| 4    | POST   | `/api/export`                          | Export image list for a job. |
 
-**Registry auth:** `POST /api/genesis/registry-auth` with `destinationRegistry`, `destinationRegistryUser`, `destinationRegistryPassword` → returns Docker-style auth JSON for `REGISTRY_AUTH_FILE`.
+- **Job lifetime:** Jobs expire after 60 minutes.
+- **k3sVersions / rke2Versions / rkeVersions:** Send as comma-separated strings (e.g. `"v1.32.11+k3s3"`), not arrays. Use versions from `/api/step1-options` for compatibility.
 
-**Other:** `POST /api/check-availability`, `POST /api/scan`, `GET /api/scan/status/<id>`, `GET /api/scan/report/<id>`, `GET /api/release-notes`, `GET /api/logs`.
+#### GET `/api/rancher-versions`
+
+**Query:** `includeRC=true` (optional) — include release candidates.
+
+**Response:** `200 OK`, `application/json`
+
+```json
+{
+  "versions": [
+    { "version": "v2.13.1", "date": "2025-01-15" },
+    { "version": "v2.12.5", "date": "2024-11-01" }
+  ]
+}
+```
+
+#### GET `/api/step1-options`
+
+**Query:** `rancher=<version>` (required). Optional: `includeRC=true`, `includeGitHubVersions=true`.
+
+**Response:** `200 OK`, `application/json`
+
+```json
+{
+  "hasRKE1": false,
+  "capabilities": {
+    "k3s": {
+      "versions": ["v1.32.11+k3s3", "v1.30.5+k3s1"],
+      "sources": { "v1.32.11+k3s3": "kdm", "v1.30.5+k3s1": "both" }
+    },
+    "rke2": {
+      "versions": ["v1.32.11+rke2r3", "v1.30.5+rke2r1"],
+      "sources": { "v1.32.11+rke2r3": "kdm" }
+    }
+  },
+  "details": {
+    "kdmUrl": "https://releases.rancher.com/kontainer-driver-metadata/release-v2.13/data.json",
+    "imageListSource": "GitHub (k3s-io/k3s, rancher/rke2)"
+  }
+}
+```
+
+#### POST `/api/generate`
+
+**Body:** JSON with `rancherVersion`, `distros` (array), `cni`, `loadBalancer`, `includeWindows`, `k3sVersions`, `rke2Versions`, `rkeVersions` (strings), optional `rancherVersions`, `isRPMGC`, `includeAppCollectionCharts`, LB flags, etc.
+
+**Response:** `200 OK`, `application/json`
+
+```json
+{
+  "jobId": "uuid",
+  "roots": [
+    { "id": "basic", "label": "Basic", "kind": "group", "count": 120, "children": [...] }
+  ],
+  "basicCharts": [...],
+  "basicImageComponent": { "chart-name": "image-ref" },
+  "pastSelection": "base64-or-empty"
+}
+```
+
+Tree nodes: `id`, `label`, `kind` (e.g. `group`, `chart`, `image`), `count`, `children` (optional).
+
+#### POST `/api/export`
+
+**Body:** JSON `{ "jobId", "selectedComponentIDs", "chartNames", "selectedImageRefs" }` (all arrays of strings).
+
+**Response:** `200 OK`, `text/plain`, `Content-Disposition: attachment; filename=images.txt` — body is the image list (one image ref per line). On error: 400/404/500 and JSON `{ "error": "..." }`.
+
+### Public GET endpoints (pipelines / automation)
+
+After you have a `jobId` from `POST /api/generate` and have run `POST /api/export` at least once for that job:
+
+| Method | Endpoint                             | Response |
+| ------ | ------------------------------------ | -------- |
+| GET    | `/api/genesis/image-list?jobId=<id>` | `200 OK`, `text/plain`, attachment `images.txt` — one image per line. **Requires:** job exported at least once. |
+| GET    | `/api/genesis/config?jobId=<id>`     | `200 OK`, `application/x-yaml`, attachment `genesis-config.yaml` — same as `--save-config`. No export required. |
+
+Example (replace `BASE` and `JOB_ID`):
+
+```bash
+curl -o images.txt "${BASE}/api/genesis/image-list?jobId=${JOB_ID}"
+curl -o genesis-config.yaml "${BASE}/api/genesis/config?jobId=${JOB_ID}"
+```
+
+### Registry auth
+
+#### POST `/api/genesis/registry-auth`
+
+**Body:** JSON `{ "destinationRegistry", "destinationRegistryUser", "destinationRegistryPassword" }`.
+
+**Response:** `200 OK`, `application/json`, `Content-Disposition: attachment; filename="auth.json"` — Docker/containers-style auth file for `REGISTRY_AUTH_FILE`.
+
+```json
+{
+  "auths": {
+    "my-registry.example.com": { "auth": "base64(user:password)" },
+    "https://my-registry.example.com": { "auth": "base64(user:password)" }
+  }
+}
+```
+
+### Other endpoints
+
+#### POST `/api/check-availability`
+
+**Body:** JSON `{ "images": ["ref1", "ref2", ...] }`.
+
+**Response:** `200 OK`, `application/json` — `{ "results": { "<image>": { "status": "ok"|"not_found"|"error", "detail": "..." } } }`.
+
+#### POST `/api/scan`
+
+**Body:** JSON `{ "images": ["ref1", ...] }` (max 50 images). **Response:** `200 OK`, `application/json` — `{ "scanJobId": "uuid" }`.
+
+#### GET `/api/scan/status/<id>`
+
+**Response:** `200 OK`, `application/json` — `{ "status": "running"|"completed"|"failed", "summary"?: { "critical", "high", "medium", "low" }, "error"?: "..." }`.
+
+#### GET `/api/scan/report/<id>`
+
+**Response:** `200 OK`, `text/csv`, attachment `scan-report.csv` when scan is completed. Otherwise `409 Conflict` and JSON `{ "error": "..." }`.
+
+#### GET `/api/release-notes`
+
+**Query:** `repo=<owner/repo>`, `tag=<tag>` (e.g. `repo=rancher/rancher&tag=v2.13.1`). **Response:** `200 OK`, `application/json` — `{ "tag", "name", "publishedAt", "url", "prerelease", "charts", "changelog", "body" }`.
+
+#### GET `/api/logs`
+
+**Response:** `200 OK`, `application/json` — `{ "lines": [ "log line 1", ... ] }`. Recent server log lines (max 500).
 
 ---
 

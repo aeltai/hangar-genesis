@@ -1,5 +1,7 @@
 # Hangar Genesis — Project
 
+**This repo is a fork of [Hangar](https://github.com/cnrancher/hangar)** (cnrancher/hangar). It adds the Genesis server and Vue UI; all other Hangar commands (mirror, save/load, scan, etc.) come from upstream.
+
 For **full documentation** (KDM, charts, TUI, YAML, API, Prime vs Community), see **[README.md](README.md)**.
 
 ---

@@ -1,6 +1,16 @@
-# Hangar Genesis — Documentation
+<!-- Synced from README.md — edit README.md only. -->
 
-**Hangar Genesis** is a tool that uses [Hangar](https://github.com/cnrancher/hangar) to generate **modular Rancher / RKE2 / K3s image lists** for air-gapped deployments. You can then **load, save, and transfer** those image lists into air-gapped environments using **[Hauler](https://docs.hauler.dev/docs/intro)** (the “Airgap Swiss Army Knife”).
+# Hangar Genesis
+
+**Fork of [Hangar](https://github.com/cnrancher/hangar)** (SUSE Rancher) — this repo adds the Genesis server and web UI on top of upstream Hangar. For syncing with upstream, see [README-PROJECT.md](README-PROJECT.md).
+
+**Repo:** [github.com/aeltai/hangar-genesis](https://github.com/aeltai/hangar-genesis) · **Live demo:** [Try Genesis →](https://genesis-app.wonderfulsea-dc99daa3.westeurope.azurecontainerapps.io/)
+
+For **run locally, deploy, and upstream sync**, see [README-PROJECT.md](README-PROJECT.md).
+
+---
+
+**Hangar Genesis** is a tool that uses [Hangar](https://github.com/cnrancher/hangar) to generate **modular Rancher / RKE2 / K3s image lists** for air-gapped deployments. You can then **load, save, and transfer** those image lists into air-gapped environments using **[Hauler](https://docs.hauler.dev/docs/intro)** (the "Airgap Swiss Army Knife").
 
 This app provides a web UI and an optional CLI; both produce the same image lists and YAML configs.
 
@@ -72,12 +82,12 @@ Where lists are fetched from:
 
 **RKE2:** Same image names and tags, **different registry in the list**:
 
-- **Community (GitHub):** images use `**docker.io/rancher/...`** (e.g. `docker.io/rancher/hardened-calico:...`).
-- **Prime:** images use `**registry.rancher.com/rancher/...`** (e.g. `registry.rancher.com/rancher/hardened-calico:...`).
+- **Community (GitHub):** images use **`docker.io/rancher/...`** (e.g. `docker.io/rancher/hardened-calico:...`).
+- **Prime:** images use **`registry.rancher.com/rancher/...`** (e.g. `registry.rancher.com/rancher/hardened-calico:...`).
 
 **Rancher core (Prime only):** `rancher-images.txt` uses short form `rancher/...` (i.e. **docker.io** when used).
 
-So the only registry difference is **RKE2**: Prime’s RKE2 list points to **registry.rancher.com**; Community’s to **docker.io**. K3s and rancher core stay on **docker.io** in both.
+So the only registry difference is **RKE2**: Prime's RKE2 list points to **registry.rancher.com**; Community's to **docker.io**. K3s and rancher core stay on **docker.io** in both.
 
 ### Repos and URLs we use
 
@@ -116,7 +126,7 @@ The JSON has top-level keys `k3s`, `rke2`, `rke` (RKE1). Each has a `releases` a
 }
 ```
 
-We treat a version as compatible for Rancher `v2.13.1` when `v2.13.1` is between min and max (inclusive). That list is what we show as “RKE2 versions” in the UI.
+We treat a version as compatible for Rancher `v2.13.1` when `v2.13.1` is between min and max (inclusive). That list is what we show as "RKE2 versions" in the UI.
 
 **KDM (Prime GC, China):** **[https://charts.rancher.cn/kontainer-driver-metadata](https://charts.rancher.cn/kontainer-driver-metadata)** — same branch pattern (`release-v2.13/data.json`).
 
@@ -125,19 +135,13 @@ We treat a version as compatible for Rancher `v2.13.1` when `v2.13.1` is between
 
 | What                      | Community URL                                                                                                                                                                                              | Prime URL                                                                                                                                                                    |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| KDM                       | [https://releases.rancher.com/kontainer-driver-metadata/release-v2.13/data.json](https://releases.rancher.com/kontainer-driver-metadata/release-v2.13/data.json)                                           | (same or charts.rancher.cn)                                                                                                                                                  |
-| RKE2 image list (Linux)   | [https://github.com/rancher/rke2/releases/download/v1.32.11%2Brke2r3/rke2-images-all.linux-amd64.txt](https://github.com/rancher/rke2/releases/download/v1.32.11%2Brke2r3/rke2-images-all.linux-amd64.txt) | [https://prime.ribs.rancher.io/rke2/v1.32.11%2Brke2r3/rke2-images-all.linux-amd64.txt](https://prime.ribs.rancher.io/rke2/v1.32.11%2Brke2r3/rke2-images-all.linux-amd64.txt) |
-| RKE2 image list (Windows) | [https://github.com/rancher/rke2/releases/download/v1.32.11%2Brke2r3/rke2-images.windows-amd64.txt](https://github.com/rancher/rke2/releases/download/v1.32.11%2Brke2r3/rke2-images.windows-amd64.txt)     | [https://prime.ribs.rancher.io/rke2/v1.32.11%2Brke2r3/rke2-images.windows-amd64.txt](https://prime.ribs.rancher.io/rke2/v1.32.11%2Brke2r3/rke2-images.windows-amd64.txt)     |
-| Rancher core images       | (from charts)                                                                                                                                                                                              | [https://prime.ribs.rancher.io/rancher/v2.13.1/rancher-images.txt](https://prime.ribs.rancher.io/rancher/v2.13.1/rancher-images.txt)                                         |
+| KDM                       | [release-v2.13/data.json](https://releases.rancher.com/kontainer-driver-metadata/release-v2.13/data.json)                                                                                                 | (same or charts.rancher.cn)                                                                                                                                                  |
+| RKE2 image list (Linux)   | [rke2 v1.32.11+rke2r3](https://github.com/rancher/rke2/releases/download/v1.32.11%2Brke2r3/rke2-images-all.linux-amd64.txt)                                                                               | [prime.ribs.rancher.io/rke2/...](https://prime.ribs.rancher.io/rke2/v1.32.11%2Brke2r3/rke2-images-all.linux-amd64.txt)                                                      |
+| RKE2 image list (Windows) | [GitHub](https://github.com/rancher/rke2/releases/download/v1.32.11%2Brke2r3/rke2-images.windows-amd64.txt)                                                                                              | [prime.ribs.rancher.io](https://prime.ribs.rancher.io/rke2/v1.32.11%2Brke2r3/rke2-images.windows-amd64.txt)                                                                    |
+| Rancher core images       | (from charts)                                                                                                                                                                                              | [rancher v2.13.1](https://prime.ribs.rancher.io/rancher/v2.13.1/rancher-images.txt)                                                                                          |
 
 
-**K3s example (v1.32.11+k3s3):**
-
-
-| What           | Community URL                                                                                                                                                    | Prime URL                                                                                                                            |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| K3s image list | [https://github.com/k3s-io/k3s/releases/download/v1.32.11%2Bk3s3/k3s-images.txt](https://github.com/k3s-io/k3s/releases/download/v1.32.11%2Bk3s3/k3s-images.txt) | [https://prime.ribs.rancher.io/k3s/v1.32.11%2Bk3s3/k3s-images.txt](https://prime.ribs.rancher.io/k3s/v1.32.11%2Bk3s3/k3s-images.txt) |
-
+**K3s example (v1.32.11+k3s3):** Community: [GitHub k3s](https://github.com/k3s-io/k3s/releases/download/v1.32.11%2Bk3s3/k3s-images.txt) · Prime: [prime.ribs.rancher.io/k3s/...](https://prime.ribs.rancher.io/k3s/v1.32.11%2Bk3s3/k3s-images.txt)
 
 **Quick check (curl):**
 
@@ -157,37 +161,13 @@ Addon charts (Monitoring, Logging, etc.) and system charts come from **GitHub ch
 
 | Repo                                                                                     | Purpose                                  | Branch pattern                                  |
 | ---------------------------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------- |
-| **[https://github.com/rancher/charts](https://github.com/rancher/charts)**               | Addon charts (monitoring, logging, etc.) | `release-v2.13` or `dev-v2.14` (for alpha/beta) |
-| **[https://github.com/rancher/system-charts](https://github.com/rancher/system-charts)** | System charts (rancher-monitoring, etc.) | Same                                            |
+| **[github.com/rancher/charts](https://github.com/rancher/charts)**                       | Addon charts (monitoring, logging, etc.) | `release-v2.13` or `dev-v2.14` (for alpha/beta) |
+| **[github.com/rancher/system-charts](https://github.com/rancher/system-charts)**         | System charts (rancher-monitoring, etc.) | Same                                            |
 
 
 Branch is chosen from the Rancher version you selected: e.g. Rancher `v2.13.1` → branch `release-v2.13`. We clone that branch and build an index of all chart versions in the repo.
 
-**How we pick which chart version to use:**
-
-Each chart **version** declares which Rancher versions it supports in one of two ways:
-
-1. **Chart.yaml** — annotation:
-  `catalog.cattle.io/rancher-version: ">= 2.6.0 < 2.7.0"` (semver constraint).
-2. **questions.yaml** (in the chart) — fields:
-  `rancher_min_version`, `rancher_max_version` (e.g. `"2.6.3"` and `"2.6.4"`).
-
-We compare your selected Rancher version (e.g. `v2.13.1`) against that constraint. Only chart versions that **satisfy** the constraint are included. For most charts we then take the **latest** such version (index is sorted newest first). For a few (e.g. **rancher-monitoring** in system-charts), we include **all** matching versions so airgap can serve multiple Rancher lines.
-
-**Example:**
-
-- You choose Rancher **v2.13.1**.
-- We use **rancher/charts** branch **release-v2.13** and **rancher/system-charts** branch **release-v2.13**.
-- For each addon (e.g. `rancher-monitoring`), we read the index, filter versions by `catalog.cattle.io/rancher-version` (or questions.yaml), keep only those where `v2.13.1` satisfies the constraint, and use the latest (or all for monitoring).
-- Those chart versions drive the images we add to the tree and export.
-
-**Links:**
-
-- **rancher/charts (branches):** [https://github.com/rancher/charts/branches](https://github.com/rancher/charts/branches) (e.g. `release-v2.13`, `dev-v2.14`).
-- **rancher/system-charts (branches):** [https://github.com/rancher/system-charts/branches](https://github.com/rancher/system-charts/branches).
-- Example chart with annotation: in any branch, open a chart (e.g. `charts/rancher-monitoring`) and check `Chart.yaml` for `annotations.catalog.cattle.io/rancher-version` or the chart’s `questions.yaml` for `rancher_min_version` / `rancher_max_version`.
-
-So addon chart versions per Rancher version = **same branch as Rancher major.minor** + **filter chart versions by rancher-version constraint**.
+**How we pick which chart version to use:** Chart **version** declares support via `Chart.yaml` annotation `catalog.cattle.io/rancher-version` (semver constraint) or `questions.yaml` `rancher_min_version` / `rancher_max_version`. We include only versions that match your Rancher version; for most charts we take the **latest** matching version (for some, e.g. rancher-monitoring, we include all for airgap). See [rancher/charts branches](https://github.com/rancher/charts/branches) and [rancher/system-charts branches](https://github.com/rancher/system-charts/branches).
 
 ### Step 2 — Generate
 
@@ -212,55 +192,63 @@ You can run Genesis in two ways from the command line: **interactive TUI** (`--t
 The TUI is a terminal UI that mirrors the web flow: Step 1 (distros, versions, CNI, load balancer, Windows), Step 2 (generate tree), Step 3 (select groups/charts/images in the tree, then export).
 
 ```bash
-# Interactive: prompts for Step 1, then shows tree and selection (Step 2/3)
 hangar genesis --rancher=v2.13.1 --tui
 ```
 
-- **Required:** `--rancher=<version>` (e.g. `v2.13.1`). Optional: `--output=images.txt`, `--registry=<dest-registry>`.
-- **Step 1:** Choose distros (k3s, rke2, rke), CNI, load balancer, Windows, then pick K3s/RKE2/RKE versions (or “all”) from the list.
-- **Step 2/3:** Generator runs; then the tree is shown. Select/deselect nodes (Basic, Addons, charts). Export writes the image list to the output file.
-- **Save your choices as YAML:** run with `--save-config=my-config.yaml`. After you finish the TUI (export), the current selections are written to `my-config.yaml`. You can then re-run non-interactively with `--config=my-config.yaml`.
-- **Exit:** `q` or Ctrl+C exits (Ctrl+C exits immediately without saving).
-
-```bash
-# TUI and save the resulting config for later CI use
-hangar genesis --rancher=v2.13.1 --tui --save-config=genesis-config.yaml
-```
+- **Required:** `--rancher=<version>`. Optional: `--output=images.txt`, `--registry=<dest-registry>`.
+- **Save choices as YAML:** `--save-config=my-config.yaml` (writes after you export). Then re-run with `--config=my-config.yaml`.
+- **Exit:** `q` or Ctrl+C.
 
 ### YAML config (non-interactive)
 
-Run Genesis without any prompts by passing a YAML config file. Same options as the TUI and web UI; ideal for CI, scripts, and repeatable runs.
-
 ```bash
-# Non-interactive: all options come from the YAML file
 hangar genesis --rancher=v2.13.1 --config=genesis-config.yaml
 ```
 
-- **Required:** `--rancher=<version>` and `--config=<path>`.
-- **Optional flags:** `--output=images.txt`, `--registry=<dest-registry>`, `--rke2-images=...`, etc. Output defaults to `<rancher-version>-images.txt` if not set.
-- **Where to get the YAML:**  
-  - **Export YAML** from the web UI (Step 3), or  
-  - **TUI** with `--save-config=file.yaml` after export, or  
-  - Start from the example in the repo: **`generate-list-config.example.yaml`** (see [YAML Config Format](#yaml-config-format) for fields).
-
-The config file contains distros, CNI, loadBalancer, versions (per distro), groups (e.g. `basic`, `addon_monitoring`), optional `charts` and `destinationRegistry` / auth, and optional `scan` settings. No prompts are shown (except overwrite if the output file already exists).
+- **Required:** `--rancher` and `--config`. No prompts (except overwrite).
+- **Where to get YAML:** Export YAML from web UI, TUI with `--save-config`, or copy **`generate-list-config.example.yaml`** from the repo.
 
 ### Summary
 
 | Mode        | Command / source                    | Use case                          |
 | ----------- | ----------------------------------- | --------------------------------- |
 | **Web UI**  | Browser + Genesis server            | Visual flow, pipelines (API)      |
-| **TUI**     | `hangar genesis --rancher=X --tui`  | Terminal, one-off or --save-config |
+| **TUI**     | `hangar genesis --rancher=X --tui`   | Terminal, one-off or --save-config |
 | **YAML**    | `hangar genesis --rancher=X --config=file.yaml` | CI, scripts, repeat runs  |
 
 ---
 
 ## YAML Config Format
 
-Genesis can be run from the CLI with a YAML config (no UI). The same format is produced when you **Export YAML** from the app or when you use **--save-config** after a TUI run.
+Same format as **Export YAML** from the app or **--save-config** after a TUI run.
+
+### Sample configuration
+
+```yaml
+# Example: RKE2 + Calico, Basic + Monitoring/Logging, one RKE2 version
+distros:
+  - rke2
+cni: cni_calico
+loadBalancer: true
+
+versions:
+  rke2:
+    - v1.34.3+rke2r1
+
+groups:
+  - basic
+  - addon_monitoring
+  - addon_logging
+
+scan:
+  enabled: true
+  jobs: 1
+  timeout: 10m
+```
+
+Use it: `hangar genesis --rancher=v2.13.1 --config=genesis-config.yaml`. Full example with all options: **`generate-list-config.example.yaml`** in the repo root.
 
 ### Fields
-
 
 | Field                        | Type                  | Description                                                                            |
 | ---------------------------- | --------------------- | -------------------------------------------------------------------------------------- |
@@ -276,100 +264,128 @@ Genesis can be run from the CLI with a YAML config (no UI). The same format is p
 | `selectedProducts`           | `[]string`            | e.g. `["k3k"]`.                                                                        |
 | `scan`                       | `object`              | Optional: `enabled`, `jobs`, `timeout`, `report`.                                      |
 
-
-### Example YAML
-
-```yaml
-# Example: hangar genesis --rancher=v2.13.1 --config=config.yaml
-
-distros:
-  - rke2
-  # - k3s
-  # - rke
-
-sourceType: community   # or prime-gc
-
-cni: cni_calico
-
-loadBalancer: true
-# includeWindows: false
-
-# versions (optional; use "all" in UI for all)
-versions:
-  rke2:
-    - v1.34.3+rke2r1
-  # k3s:
-  #   - v1.28.5
-  # rke:
-  #   - v1.28.15
-
-groups:
-  - basic
-  - addon_monitoring
-  - addon_logging
-  # - addons
-  # - addon_storage
-  # - addon_security
-  # - addon_backup-restore
-  # - app_collection
-
-# selectedProducts:
-#   - k3k
-
-# Optional: vulnerability scan
-scan:
-  enabled: true
-  jobs: 1
-  timeout: 10m
-  report: ""
-```
+See **`generate-list-config.example.yaml`** at the project root for all supported keys (including `rancherVersions`, `includeRC`, `includeGitHubVersions`, `destinationRegistry`, per-LB options).
 
 ### Running from CLI
 
 ```bash
-# With config file (non-interactive)
 hangar genesis --rancher=v2.13.1 --config=genesis-config.yaml
-
-# Optional: custom output paths
-hangar genesis --rancher=v2.13.1 --config=genesis-config.yaml \
-  --output=my-images.txt \
-  --rke2-images=rke2-images.txt
+# Optional: --output=my-images.txt --rke2-images=...
 ```
 
-**Example config in repo:** The repository includes **`generate-list-config.example.yaml`** at the project root with commented options (distros, CNI, versions, groups, destination registry, scan). Copy and edit it for your run or use it as reference for all supported keys (including `rancherVersions`, `includeRC`, `includeGitHubVersions`, `lbK3sKlipper`, `lbRKE2Nginx`, etc.).
+---
+
+## Genesis web server
+
+The **Genesis server** is the HTTP service that serves the API and (optionally) the built web UI. Run it with:
+
+```bash
+hangar genesis serve [--port=8080] [--static=./frontend/dist]
+```
+
+| Flag       | Default   | Description                                                                 |
+| ---------- | --------- | --------------------------------------------------------------------------- |
+| `--port`   | `8080`    | Port to listen on.                                                          |
+| `--static` | *(empty)* | Directory to serve as the frontend (e.g. `./frontend/dist` after building). |
+
+- **With `--static`:** Serves both the API under `/api/` and the UI at `/`. Use this for a single process (e.g. production or "run locally").
+- **Without `--static`:** API-only; use when the frontend is served separately (e.g. `npm run dev` in `frontend/` pointing at this server).
+
+Optional: set `GITHUB_TOKEN` or `GITHUB_PAT` so the server can call GitHub without hitting rate limits (Rancher/K3s/RKE2 versions, release notes).
 
 ---
 
 ## API reference
 
-The Genesis server exposes HTTP APIs used by the UI. You can call them from scripts or pipelines (e.g. curl, GitHub Actions). All endpoints are under `/api/`. CORS allows `*` for GET and POST.
-
-**Base URL:** same origin as the app (e.g. `https://your-genesis-host` or `http://localhost:8080`).
+All endpoints are under `/api/`. Base URL: same origin as the app (e.g. `http://localhost:8080`). CORS allows GET/POST. On error, JSON `{ "error": "<message>" }` with an appropriate status (400, 404, 500, etc.).
 
 ### Generate and export flow
 
-
-| Step | Method | Endpoint                               | Description                                                                                                                                                              |
-| ---- | ------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1    | GET    | `/api/rancher-versions`                | List available Rancher versions. Optional query: `includeRC=true`.                                                                                                       |
-| 2    | GET    | `/api/step1-options?rancher=<version>` | Step 1 options (KDM capabilities, K3s/RKE2/RKE versions). Optional: `includeRC=true`, `includeGitHubVersions=true`.                                                      |
-| 3    | POST   | `/api/generate`                        | Start a generate job. Body: JSON (rancherVersion, distros, cni, k3sVersions, rke2Versions, rkeVersions, etc.). Returns `jobId`, `roots`, `basicCharts`, `pastSelection`. |
-| 4    | POST   | `/api/export`                          | Export image list for a job. Body: `{ "jobId", "selectedComponentIDs", "chartNames", "selectedImageRefs" }`. Returns `images.txt` (text/plain).                          |
-
+| Step | Method | Endpoint                               | Description |
+| ---- | ------ | -------------------------------------- | ----------- |
+| 1    | GET    | `/api/rancher-versions`                | List available Rancher versions. |
+| 2    | GET    | `/api/step1-options?rancher=<version>` | Step 1 options (KDM capabilities, K3s/RKE2/RKE versions). |
+| 3    | POST   | `/api/generate`                        | Start a generate job. |
+| 4    | POST   | `/api/export`                          | Export image list for a job. |
 
 - **Job lifetime:** Jobs expire after 60 minutes.
 - **k3sVersions / rke2Versions / rkeVersions:** Send as comma-separated strings (e.g. `"v1.32.11+k3s3"`), not arrays. Use versions from `/api/step1-options` for compatibility.
+
+#### GET `/api/rancher-versions`
+
+**Query:** `includeRC=true` (optional) — include release candidates.
+
+**Response:** `200 OK`, `application/json`
+
+```json
+{
+  "versions": [
+    { "version": "v2.13.1", "date": "2025-01-15" },
+    { "version": "v2.12.5", "date": "2024-11-01" }
+  ]
+}
+```
+
+#### GET `/api/step1-options`
+
+**Query:** `rancher=<version>` (required). Optional: `includeRC=true`, `includeGitHubVersions=true`.
+
+**Response:** `200 OK`, `application/json`
+
+```json
+{
+  "hasRKE1": false,
+  "capabilities": {
+    "k3s": {
+      "versions": ["v1.32.11+k3s3", "v1.30.5+k3s1"],
+      "sources": { "v1.32.11+k3s3": "kdm", "v1.30.5+k3s1": "both" }
+    },
+    "rke2": {
+      "versions": ["v1.32.11+rke2r3", "v1.30.5+rke2r1"],
+      "sources": { "v1.32.11+rke2r3": "kdm" }
+    }
+  },
+  "details": {
+    "kdmUrl": "https://releases.rancher.com/kontainer-driver-metadata/release-v2.13/data.json",
+    "imageListSource": "GitHub (k3s-io/k3s, rancher/rke2)"
+  }
+}
+```
+
+#### POST `/api/generate`
+
+**Body:** JSON with `rancherVersion`, `distros` (array), `cni`, `loadBalancer`, `includeWindows`, `k3sVersions`, `rke2Versions`, `rkeVersions` (strings), optional `rancherVersions`, `isRPMGC`, `includeAppCollectionCharts`, LB flags, etc.
+
+**Response:** `200 OK`, `application/json`
+
+```json
+{
+  "jobId": "uuid",
+  "roots": [
+    { "id": "basic", "label": "Basic", "kind": "group", "count": 120, "children": [...] }
+  ],
+  "basicCharts": [...],
+  "basicImageComponent": { "chart-name": "image-ref" },
+  "pastSelection": "base64-or-empty"
+}
+```
+
+Tree nodes: `id`, `label`, `kind` (e.g. `group`, `chart`, `image`), `count`, `children` (optional).
+
+#### POST `/api/export`
+
+**Body:** JSON `{ "jobId", "selectedComponentIDs", "chartNames", "selectedImageRefs" }` (all arrays of strings).
+
+**Response:** `200 OK`, `text/plain`, `Content-Disposition: attachment; filename=images.txt` — body is the image list (one image ref per line). On error: 400/404/500 and JSON `{ "error": "..." }`.
 
 ### Public GET endpoints (pipelines / automation)
 
 After you have a `jobId` from `POST /api/generate` and have run `POST /api/export` at least once for that job:
 
-
-| Method | Endpoint                             | Description                                                                                                                                            |
-| ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET    | `/api/genesis/image-list?jobId=<id>` | Returns the exported image list (same as `images.txt`). Re-fetch without sending a POST body. **Requires:** job must have been exported at least once. |
-| GET    | `/api/genesis/config?jobId=<id>`     | Returns the genesis list config as YAML (same as `--save-config`). No export required.                                                                 |
-
+| Method | Endpoint                             | Response |
+| ------ | ------------------------------------ | -------- |
+| GET    | `/api/genesis/image-list?jobId=<id>` | `200 OK`, `text/plain`, attachment `images.txt` — one image per line. **Requires:** job exported at least once. |
+| GET    | `/api/genesis/config?jobId=<id>`     | `200 OK`, `application/x-yaml`, attachment `genesis-config.yaml` — same as `--save-config`. No export required. |
 
 Example (replace `BASE` and `JOB_ID`):
 
@@ -378,57 +394,67 @@ curl -o images.txt "${BASE}/api/genesis/image-list?jobId=${JOB_ID}"
 curl -o genesis-config.yaml "${BASE}/api/genesis/config?jobId=${JOB_ID}"
 ```
 
-### Registry auth (backend-generated auth file)
+### Registry auth
 
+#### POST `/api/genesis/registry-auth`
 
-| Method | Endpoint                     | Description                                                                                                                                                                                                                                                 |
-| ------ | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/genesis/registry-auth` | Body: `{ "destinationRegistry", "destinationRegistryUser", "destinationRegistryPassword" }`. Returns a Docker/containers-style auth JSON (attachment `auth.json`). Use with `REGISTRY_AUTH_FILE` so Hangar can push without running `hangar login` locally. |
+**Body:** JSON `{ "destinationRegistry", "destinationRegistryUser", "destinationRegistryPassword" }`.
 
+**Response:** `200 OK`, `application/json`, `Content-Disposition: attachment; filename="auth.json"` — Docker/containers-style auth file for `REGISTRY_AUTH_FILE`.
+
+```json
+{
+  "auths": {
+    "my-registry.example.com": { "auth": "base64(user:password)" },
+    "https://my-registry.example.com": { "auth": "base64(user:password)" }
+  }
+}
+```
 
 ### Other endpoints
 
+#### POST `/api/check-availability`
 
-| Method | Endpoint                                         | Description                                                                                        |
-| ------ | ------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| POST   | `/api/check-availability`                        | Body: `{ "images": ["ref1", ...] }`. Returns per-image availability (e.g. pullable from registry). |
-| POST   | `/api/scan`                                      | Body: `{ "images": ["ref1", ...] }`. Starts Trivy scan; returns `scanJobId`.                       |
-| GET    | `/api/scan/status/<id>`                          | Scan job status.                                                                                   |
-| GET    | `/api/scan/report/<id>`                          | Download scan report (CSV).                                                                        |
-| GET    | `/api/release-notes?repo=<owner/repo>&tag=<tag>` | Fetch GitHub release notes.                                                                        |
-| GET    | `/api/logs`                                      | Recent server log lines (e.g. during generate).                                                    |
+**Body:** JSON `{ "images": ["ref1", "ref2", ...] }`.
 
+**Response:** `200 OK`, `application/json` — `{ "results": { "<image>": { "status": "ok"|"not_found"|"error", "detail": "..." } } }`.
+
+#### POST `/api/scan`
+
+**Body:** JSON `{ "images": ["ref1", ...] }` (max 50 images). **Response:** `200 OK`, `application/json` — `{ "scanJobId": "uuid" }`.
+
+#### GET `/api/scan/status/<id>`
+
+**Response:** `200 OK`, `application/json` — `{ "status": "running"|"completed"|"failed", "summary"?: { "critical", "high", "medium", "low" }, "error"?: "..." }`.
+
+#### GET `/api/scan/report/<id>`
+
+**Response:** `200 OK`, `text/csv`, attachment `scan-report.csv` when scan is completed. Otherwise `409 Conflict` and JSON `{ "error": "..." }`.
+
+#### GET `/api/release-notes`
+
+**Query:** `repo=<owner/repo>`, `tag=<tag>` (e.g. `repo=rancher/rancher&tag=v2.13.1`). **Response:** `200 OK`, `application/json` — `{ "tag", "name", "publishedAt", "url", "prerelease", "charts", "changelog", "body" }`.
+
+#### GET `/api/logs`
+
+**Response:** `200 OK`, `application/json` — `{ "lines": [ "log line 1", ... ] }`. Recent server log lines (max 500).
 
 ---
 
 ## Using the Image List with Hauler
 
-1. **Generate your image list** in this app (or via `hangar genesis --config=...`) and download the image list file (e.g. `images.txt`).
-2. **Create a Hauler store** and add the images from your list (Hauler can read the same image-list format):
-  ```bash
-   hauler store add-images images.txt
-  ```
-   Or add images one-by-one; see [Hauler Store](https://docs.hauler.dev/docs/usage/store).
-3. **Package the store** (e.g. tar or OCI) and move it to your air-gapped environment.
-4. **In the air-gapped environment**, use Hauler to serve the store or load images into your local registry:
-  ```bash
-   hauler store serve
-   # or load images into a registry from the store
-  ```
+1. Generate your image list (web UI, TUI, or `--config`) and download `images.txt`.
+2. **Hauler store:** `hauler store add-images images.txt` (see [Hauler Store](https://docs.hauler.dev/docs/usage/store)).
+3. Package the store and move to air-gap; then `hauler store serve` or load into your registry.
 
-See [Hauler documentation](https://docs.hauler.dev/docs/intro) for full workflows (charts, files, airgap).
+See [Hauler documentation](https://docs.hauler.dev/docs/intro).
 
 ---
 
 ## Summary
 
-
 | Item                | Description                                                                                                                           |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| **This app**        | Hangar Genesis UI: configure distros/versions/options → generate tree → select components → export image list or YAML, optional scan. |
-| **Hangar**          | Generates and works with image lists: copy, save, load, mirror, sign, scan.                                                           |
-| **Hauler**          | Packages and serves image lists (and charts/files) for air-gap: store, serve, load.                                                   |
-| **Download Hauler** | [Hauler releases (GitHub)](https://github.com/hauler-dev/hauler/releases)                                                             |
-
-
-For more on Hangar (CLI, save/load/mirror), see [Hangar Documentation](https://hangar.cnrancher.com/docs/).
+| **This app**        | Hangar Genesis: configure distros/versions/options → generate tree → select components → export image list or YAML, optional scan.     |
+| **Hangar**          | Image lists: copy, save, load, mirror, sign, scan. [Hangar docs](https://hangar.cnrancher.com/docs/).                               |
+| **Hauler**          | Air-gap: store, serve, load. [Hauler releases](https://github.com/hauler-dev/hauler/releases)                                         |
