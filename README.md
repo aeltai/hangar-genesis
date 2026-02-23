@@ -1,71 +1,68 @@
-<div align="center">
-  <h1>Hangar</h1>
-  <p>
-    <a href="https://build.opensuse.org/package/show/home:StarryWang/hangar"><img src="https://build.opensuse.org/projects/home:StarryWang/packages/hangar/badge.svg?type=default"></a>
-    <a href="https://aur.archlinux.org/packages/hangar"><img src="https://img.shields.io/aur/version/hangar"></a>
-    <a href="https://goreportcard.com/report/github.com/cnrancher/hangar"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/cnrancher/hangar"></a>
-    <a href="https://github.com/cnrancher/hangar/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/cnrancher/hangar?color=default&label=release&logo=github"></a>
-    <a href="https://github.com/cnrancher/hangar/releases"><img alt="GitHub pre-release" src="https://img.shields.io/github/v/release/cnrancher/hangar?include_prereleases&label=pre-release&logo=github"></a>
-    <img alt="License" src="https://img.shields.io/badge/License-Apache_2.0-blue.svg">
-  </p>
-</div>
+# Hangar Genesis
 
-> English | [简体中文](https://hangar.cnrancher.com/zh/)
+Generate image lists for Rancher air-gapped deployments (Community and Prime). Use the web UI to pick Rancher version(s), distros (K3s, RKE2, RKE1), CNI, load balancer, and charts—then export a single list to mirror or bundle with **[Hangar](https://github.com/cnrancher/hangar)** or **[Hauler](https://github.com/rancher/hauler)**.
 
-Hangar is a command line utility for container images with the following features:
+## Live demo
 
-- Multi-platform container images.
-- Copy container images between registry servers.
-- Export container images as archive files and import them into image repositories.
-- Sign container images with sigstore key-pairs.
-- Scan container image vulnerabilities.
+**[Try Genesis →](https://genesis-app.wonderfulsea-dc99daa3.westeurope.azurecontainerapps.io/)**
 
-## Why use hangar?
+Build your list in the browser: select options, toggle groups/charts/images, optionally set a destination registry, then download `images.txt` and use it with Hangar (mirror, save/load) or Hauler (store, mirror).
 
-- Hangar does not require any container runtime (daemon) to copy container images.
-- Hangar is cross-platform and works in all Unix-like operating systems.
-- Hangar supports both [docker images](https://github.com/moby/docker-image-spec/blob/main/README.md) and [OCI images](https://github.com/opencontainers/image-spec).
-- Hangar supports copying/saving/loading/signing/scanning images in parallel to increase speed.
-- Hangar is designed to export container images as archive files and import them into image repositories in Air-Gapped environments.
+## What Genesis does
 
-## Genesis (interactive generate-list)
+- Fetches Rancher, K3s, RKE2, and RKE1 version data from KDM and GitHub
+- Lets you choose distros, CNI, load balancer/ingress, and optional add-on charts
+- Outputs one image list (and chart list) you can export as `images.txt`
+- Optional: scan selected images (Trivy) and check image availability
 
-**Live UI (Hangar Genesis):** [https://genesis-app.wonderfulsea-dc99daa3.westeurope.azurecontainerapps.io/](https://genesis-app.wonderfulsea-dc99daa3.westeurope.azurecontainerapps.io/) — build image lists in the browser (Rancher version, distros, CNI, charts; export for mirror/save/Hauler).
+The exported list is a plain text file (one image per line), ready for:
 
-The `genesis` command (alias `generate-list-genesis`) generates image lists and Kubernetes version lists for Rancher air-gapped deployments. You can use an interactive TUI, a config file, or both:
+- **[Hangar](https://github.com/cnrancher/hangar)** — `hangar mirror`, `hangar save` / `hangar load`, `hangar scan`
+- **[Hauler](https://github.com/rancher/hauler)** — create a store (zip) or mirror into your registry
+
+See the in-app **Docs** (including the **API reference** for HTTP endpoints and pipelines) and the “Next steps” section (when you set a destination registry) for exact commands.
+
+## Run locally
+
+**Backend (API + serves frontend):**
 
 ```bash
-# Interactive TUI: select distros (K3s/RKE2/RKE1), CNI, load balancer, and versions
-hangar genesis --rancher=v2.13.1 --tui
+# Build frontend
+cd frontend && npm ci && npm run build && cd ..
 
-# Config-driven (e.g. after saving selections from TUI); no prompts, ideal for CI/scripts
-hangar genesis --rancher=v2.13.1 --config=config.yaml
+# Run Genesis server (serves API + static frontend)
+go run main.go genesis serve --port=8080 --static=./frontend/dist
 ```
 
-In TUI mode, press **q** or **Ctrl+C** at any step to exit immediately (all steps are cancelled).
+Open http://localhost:8080
 
-See `hangar genesis --help` for options and `generate-list-config.example.yaml` for a sample config.
+**Optional:** Set `GITHUB_TOKEN` or `GITHUB_PAT` (GitHub Personal Access Token) to avoid API rate limits when fetching Rancher/K3s/RKE2 versions and release notes.
 
-## Getting started
+## Deploy (Azure Container Apps)
 
-For documentation, visit the [Hangar Documentation](https://hangar.cnrancher.com/docs/v1.9).
+See [deploy/azure/README.md](deploy/azure/README.md). Use [container-app.sh](deploy/azure/container-app.sh) to build, push, and deploy. Set `GITHUB_TOKEN` in `deploy/azure/.env` so the container app uses it for GitHub API calls.
 
-## Contributing
+## Keeping in sync with Hangar
 
-Hangar is open-source and any [issues](https://github.com/cnrancher/hangar/issues) or [pull requests](https://github.com/cnrancher/hangar/pulls) are welcomed if you have any suggestions while using Hangar.
+This repo is based on **[Hangar](https://github.com/cnrancher/hangar)** (SUSE Rancher). We ship Hangar’s code plus the Genesis server and Vue UI. To get upstream fixes and features (mirror, save/load, scan, etc.), merge from Hangar periodically.
+
+**Do we regularly merge?** Yes. Pull in upstream when you want to stay current (e.g. after a Hangar release or when you need a fix).
+
+**How to merge upstream:**
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
+
+(Use `upstream` = `https://github.com/cnrancher/hangar.git`; add it with `git remote add upstream ...` if needed.)
+
+- Resolve conflicts if any (often in `pkg/`, `main.go`, or shared commands). Genesis-specific code lives under `pkg/commands/genesis*.go`, `genesis_serve.go`, and `frontend/`.
+- Run tests and try the Genesis UI after merging.
+- Optionally note the Hangar version you merged (e.g. in a release note or a “Based on Hangar v1.x” line in this README) so you know what you’re on next time.
 
 ## License
 
 Copyright 2025 SUSE Rancher
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).

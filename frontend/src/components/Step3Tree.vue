@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import type { TreeNode } from '../types/genesis'
-import { checkAvailability, fetchReleaseNotes, startScan, getScanStatus, downloadScanReport, fetchLogs, type AvailabilityResult, type ReleaseInfo, type ScanStatusResponse } from '../api/genesis'
+import { checkAvailability, fetchReleaseNotes, startScan, getScanStatus, downloadScanReport, downloadRegistryAuthFile, fetchLogs, type AvailabilityResult, type ReleaseInfo, type ScanStatusResponse } from '../api/genesis'
 
 const props = defineProps<{
+  jobId?: string
   roots: TreeNode[]
   basicCharts: TreeNode[]
   basicImageComponent: Record<string, string>
@@ -14,16 +15,22 @@ const props = defineProps<{
   rke2Versions: string[]
   k3sVersions: string[]
   destinationRegistry?: string
+  destinationRegistryUser?: string
+  destinationRegistryPassword?: string
 }>()
 
 const emit = defineEmits<{
   exportList: [selectedComponentIDs: string[], chartNames: string[], selectedImageRefs: string[]]
   back: []
   'update:destinationRegistry': [value: string]
+  'update:destinationRegistryUser': [value: string]
+  'update:destinationRegistryPassword': [value: string]
 }>()
 
 // Mobile: switch between Groups / Charts / Images so each view gets full width
 const mobileTab = ref<'groups' | 'charts' | 'images'>('groups')
+const showPipelinesSection = ref(false)
+const apiBase = typeof window !== 'undefined' ? window.location.origin : ''
 
 // Flatten tree with expand state
 const expanded = reactive<Record<string, boolean>>({})
@@ -283,6 +290,31 @@ async function doDownloadScanReport() {
   }
 }
 
+const canDownloadAuth = computed(() => {
+  const r = (props.destinationRegistry ?? '').trim()
+  const u = (props.destinationRegistryUser ?? '').trim()
+  const p = props.destinationRegistryPassword ?? ''
+  return r.length > 0 && u.length > 0 && p.length > 0
+})
+const authDownloadError = ref('')
+const authDownloading = ref(false)
+async function doDownloadAuthFile() {
+  if (!canDownloadAuth.value) return
+  authDownloadError.value = ''
+  authDownloading.value = true
+  try {
+    await downloadRegistryAuthFile(
+      props.destinationRegistry ?? '',
+      props.destinationRegistryUser ?? '',
+      props.destinationRegistryPassword ?? ''
+    )
+  } catch (e) {
+    authDownloadError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    authDownloading.value = false
+  }
+}
+
 onUnmounted(() => {
   if (scanPollTimer.value) {
     clearInterval(scanPollTimer.value)
@@ -443,24 +475,84 @@ function toggleReleaseNotes() {
         </button>
         <button type="button" class="btn btn-primary" @click="doExport">Export image list</button>
       </div>
-      <div class="destination-registry-row">
-        <label class="dest-registry-label">Destination registry (optional)</label>
-        <input
-          type="text"
-          class="dest-registry-input"
-          :value="props.destinationRegistry ?? ''"
-          placeholder="e.g. my-registry.example.com"
-          @input="emit('update:destinationRegistry', (($event.target as HTMLInputElement)?.value ?? '').trim())"
-        />
+      <div class="destination-registry-section">
+        <div class="destination-registry-row">
+          <label class="dest-registry-label">Destination registry (optional)</label>
+          <input
+            type="text"
+            class="dest-registry-input"
+            :value="props.destinationRegistry ?? ''"
+            placeholder="e.g. my-registry.example.com"
+            @input="emit('update:destinationRegistry', (($event.target as HTMLInputElement)?.value ?? '').trim())"
+          />
+        </div>
+        <div class="destination-registry-row">
+          <label class="dest-registry-label">Registry username (optional)</label>
+          <input
+            type="text"
+            class="dest-registry-input"
+            :value="props.destinationRegistryUser ?? ''"
+            placeholder="for hangar login"
+            autocomplete="off"
+            @input="emit('update:destinationRegistryUser', (($event.target as HTMLInputElement)?.value ?? '').trim())"
+          />
+        </div>
+        <div class="destination-registry-row">
+          <label class="dest-registry-label">Registry password / token (optional)</label>
+          <input
+            type="password"
+            class="dest-registry-input"
+            :value="props.destinationRegistryPassword ?? ''"
+            placeholder="for hangar login (never shown in commands)"
+            autocomplete="off"
+            @input="emit('update:destinationRegistryPassword', (($event.target as HTMLInputElement)?.value ?? ''))"
+          />
+        </div>
       </div>
       <div v-if="(props.destinationRegistry ?? '').length > 0" class="next-steps-box">
         <h4 class="next-steps-title">Next steps: mirror or bundle</h4>
         <p class="next-steps-desc">After exporting <code>images.txt</code>, use Hangar or <a href="https://github.com/rancher/hauler" target="_blank" rel="noopener noreferrer">Hauler</a> to mirror into your registry or create a zip bundle.</p>
+        <p class="next-steps-auth-note">
+          <strong>Registry auth:</strong> The backend can log in for you: enter registry + username + password above, then click <strong>Download auth file</strong>. Save it and run <code>export REGISTRY_AUTH_FILE=./auth.json</code> before <code>hangar mirror</code>—no need to run <code>hangar login</code>. Or use the login command below.
+        </p>
+        <p v-if="authDownloadError" class="next-steps-auth-error">{{ authDownloadError }}</p>
+        <div v-if="canDownloadAuth" class="next-steps-auth-download">
+          <button type="button" class="btn btn-download-auth" :disabled="authDownloading" @click="doDownloadAuthFile">Download auth file</button>
+        </div>
         <ul class="next-steps-commands">
+          <li v-if="(props.destinationRegistryUser ?? '').length > 0"><strong>Or log in via CLI (once):</strong> <code class="cmd">hangar login -u {{ props.destinationRegistryUser }} -p &lt;your-password&gt; {{ props.destinationRegistry }}</code></li>
           <li><strong>Mirror to your registry:</strong> <code class="cmd">hangar mirror -f images.txt -d {{ props.destinationRegistry }}</code></li>
           <li><strong>Save to zip (then load on target):</strong> <code class="cmd">hangar save -f images.txt -d bundle.zip</code> then <code class="cmd">hangar load -s bundle.zip -d {{ props.destinationRegistry }}</code></li>
           <li><strong>Hauler:</strong> Use the same image list with Hauler to create a store (zip) or mirror; see <a href="https://github.com/rancher/hauler" target="_blank" rel="noopener noreferrer">Hauler docs</a>.</li>
         </ul>
+        <div class="pipelines-section">
+          <button type="button" class="pipelines-toggle" @click="showPipelinesSection = !showPipelinesSection">
+            {{ showPipelinesSection ? '▼' : '▶' }} Pipelines &amp; automation
+          </button>
+          <div v-show="showPipelinesSection" class="pipelines-content">
+            <p class="pipelines-intro">Use the auth file and image list in CI/CD (GitHub Actions, GitLab CI, Jenkins, etc.):</p>
+            <h5 class="pipelines-h5">Auth in pipeline</h5>
+            <ul class="pipelines-list">
+              <li>Store the downloaded <code>auth.json</code> as a secret (e.g. <code>REGISTRY_AUTH_FILE</code> content or file).</li>
+              <li>In your job: <code class="cmd">export REGISTRY_AUTH_FILE=/path/to/auth.json</code> (or mount the secret), then run <code>hangar mirror -f images.txt -d $REGISTRY</code>.</li>
+            </ul>
+            <h5 class="pipelines-h5">Public API (HTTP / YAML)</h5>
+            <p class="pipelines-desc">After generating in the UI (or via <code>POST /api/generate</code>) and exporting once (<code>POST /api/export</code>), you can re-fetch the list or config with GET:</p>
+            <ul class="pipelines-list">
+              <li><strong>Image list (text):</strong> <code class="cmd">GET /api/genesis/image-list?jobId=<span class="job-id-placeholder">{{ props.jobId || 'YOUR_JOB_ID' }}</span></code> — returns <code>images.txt</code> (same as export).</li>
+              <li><strong>List config (YAML):</strong> <code class="cmd">GET /api/genesis/config?jobId=<span class="job-id-placeholder">{{ props.jobId || 'YOUR_JOB_ID' }}</span></code> — returns genesis config YAML (same as <code>--save-config</code>).</li>
+            </ul>
+            <p class="pipelines-desc">Jobs expire after 60 minutes. Use the same origin as the UI (e.g. <code>https://your-genesis-host</code>).</p>
+            <h5 class="pipelines-h5">Example (curl)</h5>
+            <pre class="pipelines-example"># After you have a jobId (from UI or POST /api/generate):
+curl -o images.txt "{{ apiBase }}/api/genesis/image-list?jobId={{ props.jobId || 'JOB_ID' }}"
+curl -o genesis-config.yaml "{{ apiBase }}/api/genesis/config?jobId={{ props.jobId || 'JOB_ID' }}"
+
+# In pipeline: set auth then mirror
+export REGISTRY_AUTH_FILE=./auth.json
+hangar mirror -f images.txt -d your-registry.io</pre>
+          </div>
+        </div>
       </div>
       <div v-if="scanStatus?.status === 'running'" class="scan-summary scan-ongoing">
         <span class="scan-done">Ongoing scan…</span> <span class="scan-hint">Scan selected images is disabled until the current scan finishes.</span>
@@ -565,7 +657,7 @@ function toggleReleaseNotes() {
         <div class="legend">
           <span class="legend-item tag-Rancher">[R] Rancher</span>
           <span class="legend-item tag-CNI">[C] CNI</span>
-          <span class="legend-item tag-RKE">[RKE2] RKE2</span>
+          <span class="legend-item tag-RKE">[D] Distro</span>
           <span class="legend-item tag-LoadBalancerIngress">[LB] Ingress</span>
           <span class="legend-item tag-addons">[A] AddOn</span>
         </div>
@@ -582,7 +674,7 @@ function toggleReleaseNotes() {
         <div class="legend">
           <span class="legend-item tag-Rancher">[R] Rancher</span>
           <span class="legend-item tag-CNI">[C] CNI</span>
-          <span class="legend-item tag-RKE">[RKE2] RKE2</span>
+          <span class="legend-item tag-RKE">[D] Distro</span>
           <span class="legend-item tag-LoadBalancerIngress">[LB] Ingress</span>
           <span class="legend-item tag-addons">[A] AddOn</span>
         </div>
@@ -682,11 +774,16 @@ function toggleReleaseNotes() {
   font-size: 0.85rem;
   color: var(--yellow);
 }
+.destination-registry-section {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
 .destination-registry-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 0.5rem;
   flex-wrap: wrap;
   width: 100%;
 }
@@ -723,6 +820,42 @@ function toggleReleaseNotes() {
   font-size: 0.85rem;
   opacity: 0.9;
 }
+.next-steps-auth-note {
+  margin: 0.5rem 0 0.5rem 0;
+  font-size: 0.8rem;
+  opacity: 0.9;
+  line-height: 1.45;
+}
+.next-steps-auth-note code {
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+.next-steps-auth-error {
+  color: var(--error);
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0 0;
+}
+.next-steps-auth-download {
+  margin: 0.5rem 0 0.5rem 0;
+}
+.btn-download-auth {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: 4px;
+}
+.btn-download-auth:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.btn-download-auth:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
 .next-steps-desc code,
 .next-steps-commands .cmd {
   background: var(--bg);
@@ -741,6 +874,57 @@ function toggleReleaseNotes() {
 }
 .next-steps-commands a {
   color: var(--cyan);
+}
+.pipelines-section {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+.pipelines-toggle {
+  background: none;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.25rem 0;
+}
+.pipelines-content {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+.pipelines-intro {
+  margin: 0 0 0.5rem 0;
+  opacity: 0.9;
+}
+.pipelines-h5 {
+  margin: 0.75rem 0 0.25rem 0;
+  font-size: 0.9rem;
+}
+.pipelines-list {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+.pipelines-list li {
+  margin: 0.2rem 0;
+}
+.pipelines-desc {
+  margin: 0.5rem 0;
+  opacity: 0.9;
+}
+.pipelines-example {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  margin: 0.5rem 0;
+  padding: 0.75rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.job-id-placeholder {
+  font-weight: 600;
 }
 .tree-layout-wrapper {
   display: flex;

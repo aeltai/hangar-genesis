@@ -67,6 +67,8 @@ const genRequest = reactive<GenerateRequest>({
   rke2Versions: ['all'],
   rkeVersions: ['all'],
   destinationRegistry: '',
+  destinationRegistryUser: '',
+  destinationRegistryPassword: '',
 })
 
 const genResponse = ref<GenerateResponse | null>(null)
@@ -372,6 +374,7 @@ function backToStep1() {
 
       <div v-else-if="step === 'step3' && genResponse" class="panel panel-fullscreen">
         <Step3Tree
+          :job-id="genResponse.jobId"
           :roots="genResponse.roots"
           :basic-charts="genResponse.basicCharts"
           :basic-image-component="genResponse.basicImageComponent"
@@ -382,6 +385,8 @@ function backToStep1() {
           :rke2-versions="genRequest.distros.includes('rke2') ? genRequest.rke2Versions : []"
           :k3s-versions="genRequest.distros.includes('k3s') ? genRequest.k3sVersions : []"
           v-model:destination-registry="genRequest.destinationRegistry"
+          v-model:destination-registry-user="genRequest.destinationRegistryUser"
+          v-model:destination-registry-password="genRequest.destinationRegistryPassword"
           @export-list="runExport"
           @back="backToStep1"
         />

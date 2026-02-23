@@ -28,6 +28,11 @@ cni: cni_calico
 # true  = include (default): K3s Klipper + Traefik, RKE2 NGINX Ingress + Traefik
 # false = exclude: no Klipper, NGINX, or Traefik images in the generated list
 loadBalancer: true
+# Optional: per-component LB/ingress (only applied when loadBalancer: true)
+# lbK3sKlipper: true
+# lbK3sTraefik: true
+# lbRKE2Nginx: true
+# lbRKE2Traefik: true
 
 # Step 1: Include Windows node images (RKE2/K3s)
 # true  = Linux + Windows images; false = Linux only (default)
@@ -39,6 +44,20 @@ versions:
     - v1.34.3+rke2r1
   # rke:
   #   - v1.28.15
+
+# Optional: multiple Rancher versions (first used for --rancher when using config)
+# rancherVersions:
+#   - v2.13.1
+#   - v2.14.0
+
+# Optional: include pre-release (RC/alpha/beta) and GitHub-only K3s/RKE2 versions
+# includeRC: false
+# includeGitHubVersions: false
+
+# Optional: destination registry for mirror/load (same as --registry)
+# destinationRegistry: my-registry.example.com
+# destinationRegistryUser: myuser
+# destinationRegistryPassword: ""   # or set; used for hangar login hint / save-config
 
 # Step 2: Select groups (basic, addons, app_collection) or specific subgroups
 # Groups:

@@ -27,7 +27,7 @@ ACR_NAME="${ACR_NAME:-}"
 
 do_build() {
   echo "Building Genesis image..."
-  docker build -f deploy/azure/Dockerfile.genesis -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+  docker build -f --platform linux/amd64 deploy/azure/Dockerfile.genesis -t "${IMAGE_NAME}:${IMAGE_TAG}" .
 }
 
 do_push() {

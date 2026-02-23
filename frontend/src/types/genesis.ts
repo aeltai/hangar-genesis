@@ -44,6 +44,10 @@ export interface GenerateRequest {
   rkeVersions: string[]
   /** Optional destination registry for mirror/save/load and Hauler; used in Next steps commands. */
   destinationRegistry?: string
+  /** Optional registry username for login command hint. */
+  destinationRegistryUser?: string
+  /** Optional registry password/token (never echoed in UI). */
+  destinationRegistryPassword?: string
 }
 
 export interface GenerateResponse {
@@ -59,4 +63,15 @@ export interface ExportRequest {
   selectedComponentIDs: string[]
   chartNames: string[]
   selectedImageRefs: string[]
+}
+
+/** Product install instructions (Helm repo, install cmd, docs). */
+export interface HelmProduct {
+  description?: string
+  notes?: string
+  helmRepoName: string
+  helmRepoUrl: string
+  helmInstallCmd: string
+  cliReleasesUrl?: string
+  docsUrl?: string
 }

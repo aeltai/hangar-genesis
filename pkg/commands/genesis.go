@@ -79,8 +79,10 @@ func drawHero() {
 }
 
 type genesisOpts struct {
-	registry       string
-	kdm            string
+	registry         string
+	registryUser     string
+	registryPassword string
+	kdm              string
 	output         string
 	outputWindows  string
 	outputSource   string
@@ -136,6 +138,10 @@ type genesisOpts struct {
 	configFile string
 	// Save current TUI selections to this YAML config path (after run)
 	saveConfigFile string
+
+	// Step 1: include pre-release and GitHub versions (from config or TUI; used when merging version lists)
+	includeRC             bool
+	includeGitHubVersions bool
 }
 
 type genesisCmd struct {
@@ -258,7 +264,9 @@ See generate-list-config.example.yaml for config file format.`,
 		},
 	})
 	flags := cc.baseCmd.cmd.PersistentFlags()
-	flags.StringVarP(&cc.registry, "registry", "", "", "customize the registry URL of the generated image list")
+	flags.StringVarP(&cc.registry, "registry", "", "", "customize the registry URL of the generated image list (destination registry for mirror/load)")
+	flags.StringVarP(&cc.registryUser, "registry-user", "", "", "registry username for login (saved in --save-config; use with hangar login)")
+	flags.StringVarP(&cc.registryPassword, "registry-password", "", "", "registry password or token for login (saved in --save-config; use with hangar login)")
 	flags.StringVarP(&cc.output, "output", "o", "", "output linux image list file (default \"[RANCHER_VERSION]-images.txt\")")
 	flags.StringVarP(&cc.outputWindows, "output-windows", "", "", "output the windows image list if specified")
 	flags.StringVarP(&cc.outputSource, "output-source", "", "", "output the image list with image source if specified")
@@ -354,17 +362,27 @@ func (cc *genesisCmd) handleComponentSelection() error {
 	return cc.parseComponentFlags()
 }
 
-// generateListConfig represents the YAML config file structure
+// generateListConfig represents the YAML config file structure (aligned with Genesis UI options)
 type generateListConfig struct {
 	Distros                    []string            `yaml:"distros"`                    // ["k3s", "rke2", "rke"]
-	CNI                        string              `yaml:"cni"`                        // "cni_canal", "cni_calico", "cni_flannel"
-	LoadBalancer               *bool               `yaml:"loadBalancer"`               // true = include LB/ingress (K3s: Klipper/Traefik, RKE2: NGINX/Traefik), false = exclude
-	IncludeWindows             *bool               `yaml:"includeWindows"`             // true = include Windows node images (RKE2/K3s), false = Linux only (default)
-	Versions                   map[string][]string `yaml:"versions"`                   // {"k3s": ["v1.28.5"], "rke2": ["v1.28.5"]}
-	Groups                     []string            `yaml:"groups"`                     // ["basic", "addons"] or specific chart names
+	CNI                        string              `yaml:"cni"`                        // "cni_canal", "cni_calico", "cni_flannel", "cni_cilium"
+	LoadBalancer               *bool               `yaml:"loadBalancer"`               // true = include LB/ingress, false = exclude all
+	LbK3sKlipper               *bool               `yaml:"lbK3sKlipper"`               // K3s: Klipper (ServiceLB)
+	LbK3sTraefik               *bool               `yaml:"lbK3sTraefik"`               // K3s: Traefik ingress
+	LbRKE2Nginx                *bool               `yaml:"lbRKE2Nginx"`                // RKE2: NGINX Ingress
+	LbRKE2Traefik              *bool               `yaml:"lbRKE2Traefik"`               // RKE2: Traefik ingress
+	IncludeWindows             *bool               `yaml:"includeWindows"`             // true = include Windows node images (RKE2/K3s)
+	Versions                   map[string][]string `yaml:"versions"`                   // {"k3s": ["v1.28.5"], "rke2": ["v1.28.5+rke2r1"], "rke": ["v1.28.15"]}
+	Groups                     []string            `yaml:"groups"`                     // ["basic", "addons", "addon_monitoring", ...]
 	Charts                     []string            `yaml:"charts"`                     // Specific chart names to include
-	SourceType                 string              `yaml:"sourceType"`                 // "community" (default) or "prime-gc" (Rancher Prime Manager GC charts/KDM)
-	IncludeAppCollectionCharts *bool               `yaml:"includeAppCollectionCharts"` // true = also include charts from dp.apps.rancher.io (requires helm registry login)
+	SourceType                 string              `yaml:"sourceType"`                 // "community" (default) or "prime-gc"
+	IncludeAppCollectionCharts *bool               `yaml:"includeAppCollectionCharts"` // true = include charts from dp.apps.rancher.io
+	RancherVersions            []string            `yaml:"rancherVersions"`            // optional: multiple Rancher versions (first used for --rancher when using config)
+	IncludeRC                  *bool               `yaml:"includeRC"`                  // include pre-release (RC/alpha/beta) versions from GitHub
+	IncludeGitHubVersions      *bool               `yaml:"includeGitHubVersions"`      // include K3s/RKE2 versions from GitHub releases (in addition to KDM)
+	DestinationRegistry        string              `yaml:"destinationRegistry"`       // optional: registry for mirror/load (same as --registry)
+	DestinationRegistryUser    string              `yaml:"destinationRegistryUser"`    // optional: registry username for hangar login
+	DestinationRegistryPassword string             `yaml:"destinationRegistryPassword"` // optional: registry password/token for hangar login
 	Scan                       *scanConfig         `yaml:"scan"`                       // Optional scan configuration
 }
 
@@ -419,17 +437,34 @@ func (cc *genesisCmd) loadConfigFile() error {
 	if config.LoadBalancer != nil {
 		cc.interactiveIncludeLB = *config.LoadBalancer
 		if *config.LoadBalancer {
-			cc.interactiveLBK3sKlipper = true
-			cc.interactiveLBK3sTraefik = true
-			cc.interactiveLBRKE2Nginx = true
-			cc.interactiveLBRKE2Traefik = true
+			cc.interactiveLBK3sKlipper = config.LbK3sKlipper == nil || *config.LbK3sKlipper
+			cc.interactiveLBK3sTraefik = config.LbK3sTraefik == nil || *config.LbK3sTraefik
+			cc.interactiveLBRKE2Nginx = config.LbRKE2Nginx == nil || *config.LbRKE2Nginx
+			cc.interactiveLBRKE2Traefik = config.LbRKE2Traefik == nil || *config.LbRKE2Traefik
+		} else {
+			cc.interactiveLBK3sKlipper = false
+			cc.interactiveLBK3sTraefik = false
+			cc.interactiveLBRKE2Nginx = false
+			cc.interactiveLBRKE2Traefik = false
 		}
 	} else {
 		cc.interactiveIncludeLB = true
-		cc.interactiveLBK3sKlipper = true
-		cc.interactiveLBK3sTraefik = true
-		cc.interactiveLBRKE2Nginx = true
-		cc.interactiveLBRKE2Traefik = true
+		cc.interactiveLBK3sKlipper = config.LbK3sKlipper == nil || (config.LbK3sKlipper != nil && *config.LbK3sKlipper)
+		cc.interactiveLBK3sTraefik = config.LbK3sTraefik == nil || (config.LbK3sTraefik != nil && *config.LbK3sTraefik)
+		cc.interactiveLBRKE2Nginx = config.LbRKE2Nginx == nil || (config.LbRKE2Nginx != nil && *config.LbRKE2Nginx)
+		cc.interactiveLBRKE2Traefik = config.LbRKE2Traefik == nil || (config.LbRKE2Traefik != nil && *config.LbRKE2Traefik)
+	}
+	if config.LbK3sKlipper != nil {
+		cc.interactiveLBK3sKlipper = *config.LbK3sKlipper
+	}
+	if config.LbK3sTraefik != nil {
+		cc.interactiveLBK3sTraefik = *config.LbK3sTraefik
+	}
+	if config.LbRKE2Nginx != nil {
+		cc.interactiveLBRKE2Nginx = *config.LbRKE2Nginx
+	}
+	if config.LbRKE2Traefik != nil {
+		cc.interactiveLBRKE2Traefik = *config.LbRKE2Traefik
 	}
 
 	// Set versions
@@ -453,6 +488,31 @@ func (cc *genesisCmd) loadConfigFile() error {
 	if len(config.Charts) > 0 {
 		cc.interactiveSelectedChartNames = config.Charts
 		cc.chartsSelection = strings.Join(config.Charts, ",")
+	}
+
+	// Destination registry (for mirror/load; same as --registry)
+	if config.DestinationRegistry != "" {
+		cc.registry = config.DestinationRegistry
+	}
+	if config.DestinationRegistryUser != "" {
+		cc.registryUser = config.DestinationRegistryUser
+	}
+	if config.DestinationRegistryPassword != "" {
+		cc.registryPassword = config.DestinationRegistryPassword
+	}
+
+	// Optional: multiple Rancher versions (first is used as primary; list used when generating)
+	if len(config.RancherVersions) > 0 {
+		cc.rancherVersionsList = config.RancherVersions
+		cc.rancherVersion = config.RancherVersions[0]
+	}
+
+	// Include pre-release and GitHub versions (for version list merging when supported)
+	if config.IncludeRC != nil {
+		cc.includeRC = *config.IncludeRC
+	}
+	if config.IncludeGitHubVersions != nil {
+		cc.includeGitHubVersions = *config.IncludeGitHubVersions
 	}
 
 	// Set scan configuration
@@ -597,15 +657,27 @@ func (cc *genesisCmd) writeSaveConfig() error {
 	includeAppCollection := cc.includeAppCollectionCharts
 	includeWin := cc.interactiveIncludeWindows
 	config := generateListConfig{
-		Distros:                    distrosClean,
-		CNI:                        cc.interactiveSelectedCNI,
-		LoadBalancer:               &includeLB,
+		Distros:                     distrosClean,
+		CNI:                         cc.interactiveSelectedCNI,
+		LoadBalancer:                &includeLB,
+		LbK3sKlipper:                &cc.interactiveLBK3sKlipper,
+		LbK3sTraefik:                &cc.interactiveLBK3sTraefik,
+		LbRKE2Nginx:                 &cc.interactiveLBRKE2Nginx,
+		LbRKE2Traefik:               &cc.interactiveLBRKE2Traefik,
 		IncludeWindows:             &includeWin,
-		Versions:                   versions,
-		Groups:                     cc.interactiveSelectedComponentIDs,
-		Charts:                     cc.interactiveSelectedChartNames,
-		SourceType:                 sourceType,
+		Versions:                    versions,
+		Groups:                      cc.interactiveSelectedComponentIDs,
+		Charts:                      cc.interactiveSelectedChartNames,
+		SourceType:                  sourceType,
 		IncludeAppCollectionCharts: &includeAppCollection,
+		IncludeRC:                  &cc.includeRC,
+		IncludeGitHubVersions:      &cc.includeGitHubVersions,
+		DestinationRegistry:        cc.registry,
+		DestinationRegistryUser:    cc.registryUser,
+		DestinationRegistryPassword: cc.registryPassword,
+	}
+	if len(cc.rancherVersionsList) > 0 {
+		config.RancherVersions = cc.rancherVersionsList
 	}
 	if cc.scan {
 		config.Scan = &scanConfig{
@@ -630,6 +702,76 @@ func (cc *genesisCmd) writeSaveConfig() error {
 	}
 	logrus.Infof("Saved configuration to %s", cc.saveConfigFile)
 	return nil
+}
+
+// GetSaveConfigYAML returns the current genesis list config as YAML bytes (same as --save-config content).
+// Used by the Genesis API to expose config via GET /api/genesis/config?jobId=...
+func (cc *genesisCmd) GetSaveConfigYAML() ([]byte, error) {
+	distros := strings.Split(cc.components, ",")
+	for i, d := range distros {
+		distros[i] = strings.TrimSpace(d)
+	}
+	var distrosClean []string
+	for _, d := range distros {
+		if d != "" {
+			distrosClean = append(distrosClean, d)
+		}
+	}
+	versions := make(map[string][]string)
+	if cc.k3sVersions != "" && cc.k3sVersions != "all" {
+		versions["k3s"] = splitAndTrim(cc.k3sVersions, ",")
+	}
+	if cc.rke2Versions != "" && cc.rke2Versions != "all" {
+		versions["rke2"] = splitAndTrim(cc.rke2Versions, ",")
+	}
+	if cc.rkeVersions != "" && cc.rkeVersions != "all" {
+		versions["rke"] = splitAndTrim(cc.rkeVersions, ",")
+	}
+	includeLB := cc.interactiveIncludeLB
+	sourceType := "community"
+	if cc.isRPMGC {
+		sourceType = "prime-gc"
+	}
+	includeAppCollection := cc.includeAppCollectionCharts
+	includeWin := cc.interactiveIncludeWindows
+	config := generateListConfig{
+		Distros:                     distrosClean,
+		CNI:                         cc.interactiveSelectedCNI,
+		LoadBalancer:                &includeLB,
+		LbK3sKlipper:                &cc.interactiveLBK3sKlipper,
+		LbK3sTraefik:                &cc.interactiveLBK3sTraefik,
+		LbRKE2Nginx:                 &cc.interactiveLBRKE2Nginx,
+		LbRKE2Traefik:               &cc.interactiveLBRKE2Traefik,
+		IncludeWindows:             &includeWin,
+		Versions:                    versions,
+		Groups:                      cc.interactiveSelectedComponentIDs,
+		Charts:                      cc.interactiveSelectedChartNames,
+		SourceType:                  sourceType,
+		IncludeAppCollectionCharts: &includeAppCollection,
+		IncludeRC:                  &cc.includeRC,
+		IncludeGitHubVersions:      &cc.includeGitHubVersions,
+		DestinationRegistry:        cc.registry,
+		DestinationRegistryUser:    cc.registryUser,
+		DestinationRegistryPassword: cc.registryPassword,
+	}
+	if len(cc.rancherVersionsList) > 0 {
+		config.RancherVersions = cc.rancherVersionsList
+	}
+	if cc.scan {
+		config.Scan = &scanConfig{
+			Enabled: true,
+			Jobs:    cc.scanJobs,
+			Timeout: cc.scanTimeout,
+			Report:  cc.scanReport,
+		}
+	}
+	data, err := yaml.Marshal(&config)
+	if err != nil {
+		return nil, fmt.Errorf("marshal config: %w", err)
+	}
+	header := "# Generated by hangar genesis (API / save-config)\n" +
+		"# Usage: hangar genesis --rancher=" + cc.rancherVersion + " --config=<path>\n"
+	return append([]byte(header), data...), nil
 }
 
 func splitAndTrim(s, sep string) []string {

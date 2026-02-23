@@ -3,6 +3,7 @@ package commands
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,13 +27,21 @@ import (
 
 const genesisJobExpiry = 60 * time.Minute
 
+// exportSelection holds the selection used for an export (for GET image-list reuse).
+type exportSelection struct {
+	SelectedComponentIDs []string
+	ChartNames           []string
+	SelectedImageRefs    []string
+}
+
 type genesisJob struct {
-	cc                  *genesisCmd
-	created             time.Time
-	roots               []treeNode
-	basicCharts         []treeNode
-	basicImageComponent map[string]string
-	pastSelection       string
+	cc                   *genesisCmd
+	created              time.Time
+	roots                []treeNode
+	basicCharts          []treeNode
+	basicImageComponent  map[string]string
+	pastSelection        string
+	lastExportSelection  *exportSelection // set after first POST /api/export for GET image-list
 }
 
 var (
@@ -259,6 +268,9 @@ func newGenesisServeCmd(parent *genesisCmd) {
 			mux.HandleFunc("/api/scan/report/{id}", handleScanReport)
 			mux.HandleFunc("/api/release-notes", handleReleaseNotes)
 			mux.HandleFunc("/api/logs", handleLogs)
+			mux.HandleFunc("/api/genesis/registry-auth", handleRegistryAuth)
+			mux.HandleFunc("/api/genesis/image-list", handleGetImageList)
+			mux.HandleFunc("/api/genesis/config", handleGetConfig)
 			if staticDir != "" {
 				fs := http.FileServer(http.Dir(staticDir))
 				mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -357,6 +369,136 @@ func handleLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	lines := genesisLogBuf.copy()
 	writeJSON(w, http.StatusOK, map[string]interface{}{"lines": lines})
+}
+
+// handleRegistryAuth returns a Docker/containers-style auth file so the user can set
+// REGISTRY_AUTH_FILE and run hangar mirror without running "hangar login" locally.
+func handleRegistryAuth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var body struct {
+		DestinationRegistry         string `json:"destinationRegistry"`
+		DestinationRegistryUser     string `json:"destinationRegistryUser"`
+		DestinationRegistryPassword string `json:"destinationRegistryPassword"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	registry := strings.TrimSpace(body.DestinationRegistry)
+	user := strings.TrimSpace(body.DestinationRegistryUser)
+	pass := body.DestinationRegistryPassword
+	if registry == "" || user == "" || pass == "" {
+		writeErr(w, http.StatusBadRequest, "destinationRegistry, destinationRegistryUser and destinationRegistryPassword required")
+		return
+	}
+	authStr := base64.StdEncoding.EncodeToString([]byte(user + ":" + pass))
+	authEntry := map[string]string{"auth": authStr}
+	auths := map[string]interface{}{registry: authEntry}
+	if !strings.Contains(registry, "://") {
+		auths["https://"+registry] = authEntry
+	}
+	authFile := map[string]interface{}{"auths": auths}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", `attachment; filename="auth.json"`)
+	json.NewEncoder(w).Encode(authFile)
+}
+
+// handleGetImageList returns the exported image list (images.txt) for a job via GET.
+// Pipeline-friendly: after POST /api/generate and POST /api/export, you can GET this URL to re-fetch the list.
+// Query: jobId (required). Export must have been run at least once for this job.
+func handleGetImageList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	jobID := strings.TrimSpace(r.URL.Query().Get("jobId"))
+	if jobID == "" {
+		writeErr(w, http.StatusBadRequest, "jobId query parameter required")
+		return
+	}
+	genesisJobsMu.RLock()
+	job, ok := genesisJobs[jobID]
+	genesisJobsMu.RUnlock()
+	if !ok {
+		writeErr(w, http.StatusNotFound, "job not found or expired")
+		return
+	}
+	if job.lastExportSelection == nil {
+		writeErr(w, http.StatusBadRequest, "export this job once via POST /api/export first, then GET image-list")
+		return
+	}
+	sel := job.lastExportSelection
+	cc := job.cc
+	cc.interactiveSelectedComponentIDs = sel.SelectedComponentIDs
+	cc.interactiveSelectedChartNames = sel.ChartNames
+	cc.interactiveSelectedImageRefs = sel.SelectedImageRefs
+	cc.autoYes = true
+	dir, err := os.MkdirTemp("", "genesis-export-*")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "temp dir: "+err.Error())
+		return
+	}
+	defer os.RemoveAll(dir)
+	cc.output = filepath.Join(dir, "images.txt")
+	if cc.interactiveIncludeWindows {
+		cc.outputWindows = filepath.Join(dir, "images-windows.txt")
+	}
+	if err := cc.finish(); err != nil {
+		writeErr(w, http.StatusInternalServerError, "finish: "+err.Error())
+		return
+	}
+	data, err := os.ReadFile(cc.output)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "read output: "+err.Error())
+		return
+	}
+	if cc.interactiveIncludeWindows && cc.outputWindows != "" {
+		winData, err := os.ReadFile(cc.outputWindows)
+		if err == nil && len(winData) > 0 {
+			if len(data) > 0 && data[len(data)-1] != '\n' {
+				data = append(data, '\n')
+			}
+			data = append(data, winData...)
+		}
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Disposition", "attachment; filename=images.txt")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+// handleGetConfig returns the genesis list config as YAML for a job via GET.
+// Pipeline-friendly: GET /api/genesis/config?jobId=XXX returns the same content as --save-config.
+// Query: jobId (required).
+func handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	jobID := strings.TrimSpace(r.URL.Query().Get("jobId"))
+	if jobID == "" {
+		writeErr(w, http.StatusBadRequest, "jobId query parameter required")
+		return
+	}
+	genesisJobsMu.RLock()
+	job, ok := genesisJobs[jobID]
+	genesisJobsMu.RUnlock()
+	if !ok {
+		writeErr(w, http.StatusNotFound, "job not found or expired")
+		return
+	}
+	yamlBytes, err := job.cc.GetSaveConfigYAML()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "config: "+err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-yaml")
+	w.Header().Set("Content-Disposition", `attachment; filename="genesis-config.yaml"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(yamlBytes)
 }
 
 func handleStep1Options(w http.ResponseWriter, r *http.Request) {
@@ -673,6 +815,14 @@ func handleExport(w http.ResponseWriter, r *http.Request) {
 	cc.interactiveSelectedChartNames = req.ChartNames
 	cc.interactiveSelectedImageRefs = req.SelectedImageRefs
 	cc.autoYes = true // non-interactive: never prompt for overwrite (e.g. *-versions.txt)
+	// Store selection so GET /api/genesis/image-list can re-export without a POST body
+	genesisJobsMu.Lock()
+	job.lastExportSelection = &exportSelection{
+		SelectedComponentIDs: append([]string(nil), req.SelectedComponentIDs...),
+		ChartNames:           append([]string(nil), req.ChartNames...),
+		SelectedImageRefs:    append([]string(nil), req.SelectedImageRefs...),
+	}
+	genesisJobsMu.Unlock()
 	dir, err := os.MkdirTemp("", "genesis-export-*")
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "temp dir: "+err.Error())

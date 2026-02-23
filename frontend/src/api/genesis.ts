@@ -203,3 +203,31 @@ export async function downloadScanReport(scanJobId: string): Promise<Blob> {
   }
   return r.blob()
 }
+
+/** Ask the backend to generate a Docker/containers auth file for the given registry credentials; triggers download of auth.json. */
+export async function downloadRegistryAuthFile(
+  destinationRegistry: string,
+  destinationRegistryUser: string,
+  destinationRegistryPassword: string
+): Promise<void> {
+  const r = await fetch(`${API_BASE}/genesis/registry-auth`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      destinationRegistry: destinationRegistry.trim(),
+      destinationRegistryUser: destinationRegistryUser.trim(),
+      destinationRegistryPassword: destinationRegistryPassword,
+    }),
+  })
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ error: r.statusText }))
+    throw new Error((err as { error?: string }).error || r.statusText)
+  }
+  const blob = await r.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'auth.json'
+  a.click()
+  URL.revokeObjectURL(url)
+}
